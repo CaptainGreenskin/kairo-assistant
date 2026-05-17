@@ -278,6 +278,27 @@ public class OpenApiController {
                         "description", "Processing status",
                         "content", jsonContent("InterruptResponse"))))));
 
+        paths.put("/api/tools/execute", Map.of("post", Map.of(
+                "summary", "Execute Tool",
+                "description", "Execute a tool directly, bypassing the agent. Returns tool output.",
+                "tags", List.of("tools"),
+                "requestBody", Map.of("required", true,
+                        "content", jsonContent("ToolExecuteRequest")),
+                "responses", Map.of("200", Map.of(
+                        "description", "Tool execution result",
+                        "content", jsonContent("ToolExecuteResponse"))))));
+
+        paths.put("/api/context", Map.of(
+                "get", endpoint("Get Context",
+                        "Returns the agent conversation history with truncated previews", "ContextResponse"),
+                "delete", Map.of(
+                        "summary", "Clear Context",
+                        "description", "Clears the agent conversation history",
+                        "tags", List.of("status"),
+                        "responses", Map.of("200", Map.of(
+                                "description", "Clear result",
+                                "content", jsonContent("ContextClearResult"))))));
+
         paths.put("/api/openapi.json", Map.of("get", endpoint(
                 "OpenAPI Spec", "Returns this OpenAPI specification", "object")));
 
@@ -438,6 +459,24 @@ public class OpenApiController {
 
         schemas.put("EndpointAnalytics", objectSchema(Map.of(
                 "endpoints", prop("object", "Map of endpoint to request count"))));
+
+        schemas.put("ToolExecuteRequest", objectSchema(Map.of(
+                "tool", prop("string", "Tool name to execute"),
+                "args", prop("object", "Tool arguments as key-value pairs"))));
+
+        schemas.put("ToolExecuteResponse", objectSchema(Map.of(
+                "tool", prop("string", "Executed tool name"),
+                "success", prop("boolean", "Whether the tool succeeded"),
+                "content", prop("string", "Tool output content"))));
+
+        schemas.put("ContextResponse", objectSchema(Map.of(
+                "state", prop("string", "Agent state"),
+                "messageCount", prop("integer", "Number of messages in context"),
+                "totalTokens", prop("integer", "Total tokens used"),
+                "messages", prop("array", "Message previews with role and truncated text"))));
+
+        schemas.put("ContextClearResult", objectSchema(Map.of(
+                "status", prop("string", "Clear result (cleared or error)"))));
 
         schemas.put("ChannelAck", objectSchema(Map.of(
                 "success", prop("boolean", "Whether the message was processed"))));
