@@ -4,13 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.memory.InMemoryStore;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TodoToolTest {
 
+    private final InMemoryStore store = new InMemoryStore();
     private final TodoTool tool = new TodoTool();
-    private final ToolContext ctx = new ToolContext("a", "s", null);
+    private final ToolContext ctx = new ToolContext("a", "s", Map.of("memoryStore", store));
 
     @Test
     void emptyListShowsNone() {
@@ -80,6 +82,14 @@ class TodoToolTest {
         ToolResult r = tool.execute(Map.of("action", "delete", "id", "zzz999"), ctx).block();
         assertThat(r.isError()).isTrue();
         assertThat(r.content()).contains("not found");
+    }
+
+    @Test
+    void noStoreErrors() {
+        ToolContext noStore = new ToolContext("a", "s", null);
+        ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("MemoryStore not available");
     }
 
     private String extractId(String content) {

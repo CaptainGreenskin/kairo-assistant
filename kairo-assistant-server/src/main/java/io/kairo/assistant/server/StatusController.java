@@ -340,6 +340,16 @@ public class StatusController {
         return result;
     }
 
+    @GetMapping("/analytics/tools")
+    public Map<String, Object> toolAnalytics() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        var stats = metrics.toolCallStats();
+        result.put("totalToolCalls", stats.values().stream().mapToLong(Long::longValue).sum());
+        result.put("uniqueToolsUsed", stats.size());
+        result.put("tools", stats);
+        return result;
+    }
+
     @PostMapping("/summarize")
     public Mono<Map<String, Object>> summarize(@RequestBody Map<String, String> body) {
         String sessionId = body.get("sessionId");

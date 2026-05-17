@@ -416,6 +416,40 @@ class StatusControllerTest {
         assertTrue(endpoints.isEmpty());
     }
 
+    @Test
+    void toolAnalyticsReturnsEmptyByDefault() {
+        var result = controller.toolAnalytics();
+        assertEquals(0L, result.get("totalToolCalls"));
+        assertEquals(0, result.get("uniqueToolsUsed"));
+    }
+
+    @Test
+    void toolAnalyticsTracksToolCalls() {
+        var metricsWithData = new MetricsCollector();
+        metricsWithData.recordToolCall("shell");
+        metricsWithData.recordToolCall("shell");
+        metricsWithData.recordToolCall("web_fetch");
+
+        var config = TestFixtures.defaultConfig();
+        var skillRegistry = AssistantSkills.createRegistry();
+        var session = new AssistantSession(
+                new TestFixtures.StubAgent(), toolRegistry,
+                new TestFixtures.StubToolExecutor(), new InMemoryStore(),
+                new TestFixtures.StubCronScheduler(), skillRegistry,
+                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                config);
+
+        var ctrl = new StatusController(session, metricsWithData, new SessionManager(session));
+        var result = ctrl.toolAnalytics();
+
+        assertEquals(3L, result.get("totalToolCalls"));
+        assertEquals(2, result.get("uniqueToolsUsed"));
+        @SuppressWarnings("unchecked")
+        var tools = (Map<String, Long>) result.get("tools");
+        assertEquals(2L, tools.get("shell"));
+        assertEquals(1L, tools.get("web_fetch"));
+    }
+
     private StatusController controllerWithDataDir(Path dataDir) {
         var config = AssistantConfig.builder()
                 .apiKey("test-key")

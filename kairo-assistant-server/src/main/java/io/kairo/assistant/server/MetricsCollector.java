@@ -68,6 +68,11 @@ public class MetricsCollector {
         endpointCounts.forEach((k, v) -> result.put(k, v.sum()));
         return result;
     }
+    public java.util.Map<String, Long> toolCallStats() {
+        var result = new java.util.TreeMap<String, Long>();
+        toolCallCounts.forEach((k, v) -> result.put(k, v.sum()));
+        return result;
+    }
     public long inputTokens() { return totalInputTokens.sum(); }
     public long outputTokens() { return totalOutputTokens.sum(); }
     public long totalTokens() { return totalInputTokens.sum() + totalOutputTokens.sum(); }

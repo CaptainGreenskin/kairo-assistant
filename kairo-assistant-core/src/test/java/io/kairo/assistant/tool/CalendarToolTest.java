@@ -52,4 +52,53 @@ class CalendarToolTest {
         // 2026-05-16 is a Saturday
         assertThat(result.content()).contains("weekend");
     }
+
+    @Test
+    void businessDaysCountBetweenDates() {
+        // Mon 2026-01-05 to Fri 2026-01-09 = 4 business days
+        ToolResult result = tool.execute(
+                Map.of("action", "business_days", "date", "2026-01-05", "date2", "2026-01-09"),
+                ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("4");
+    }
+
+    @Test
+    void businessDaysCountSkipsWeekends() {
+        // Mon 2026-01-05 to Mon 2026-01-12 = 5 business days (skips Sat+Sun)
+        ToolResult result = tool.execute(
+                Map.of("action", "business_days", "date", "2026-01-05", "date2", "2026-01-12"),
+                ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.content()).contains("5");
+    }
+
+    @Test
+    void businessDaysAddForward() {
+        // Add 5 business days from Mon 2026-01-05 = Mon 2026-01-12
+        ToolResult result = tool.execute(
+                Map.of("action", "business_days", "date", "2026-01-05", "days", 5),
+                ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("2026-01-12");
+    }
+
+    @Test
+    void weekNumber() {
+        // 2026-01-01 is ISO week 1 of 2026
+        ToolResult result = tool.execute(
+                Map.of("action", "week_number", "date", "2026-01-01"), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("week 1");
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult result = tool.execute(Map.of("action", "lunar"), ctx).block();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("Unknown action");
+    }
 }

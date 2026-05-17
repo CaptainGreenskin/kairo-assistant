@@ -24,7 +24,8 @@ import reactor.core.publisher.Mono;
 @Tool(
         name = "weather",
         description =
-                "Get current weather for a location using the Open-Meteo API (free, no API key).",
+                "Get weather for a location using the Open-Meteo API (free, no API key). "
+                        + "Actions: current (default), forecast (7-day daily outlook).",
         category = ToolCategory.INFORMATION,
         sideEffect = ToolSideEffect.READ_ONLY)
 public class WeatherTool implements SyncTool {
@@ -47,13 +48,10 @@ public class WeatherTool implements SyncTool {
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
-        props.put(
-                "location",
-                new JsonSchema(
-                        "string",
-                        null,
-                        null,
-                        "City name or location (e.g., 'Beijing', 'San Francisco')."));
+        props.put("location", new JsonSchema("string", null, null,
+                "City name or location (e.g., 'Beijing', 'San Francisco')."));
+        props.put("action", new JsonSchema("string", null, null,
+                "'current' (default) or 'forecast' for 7-day daily outlook."));
         return new JsonSchema("object", props, List.of("location"), null);
     }
 
@@ -68,14 +66,24 @@ public class WeatherTool implements SyncTool {
             return ToolResult.error("weather", "Parameter 'location' is required");
         }
 
+        String action = args.get("action") instanceof String a ? a : "current";
+
         try {
             double[] coords = geocode(location);
             if (coords == null) {
                 return ToolResult.error("weather", "Location not found: " + location);
             }
 
-            String weatherJson = fetchWeather(coords[0], coords[1]);
-            return parseWeather(weatherJson, location);
+            return switch (action.toLowerCase()) {
+                case "forecast" -> {
+                    String json = fetchForecast(coords[0], coords[1]);
+                    yield parseForecast(json, location);
+                }
+                default -> {
+                    String json = fetchWeather(coords[0], coords[1]);
+                    yield parseWeather(json, location);
+                }
+            };
         } catch (Exception e) {
             return ToolResult.error("weather", "Weather fetch failed: " + e.getMessage());
         }
@@ -120,6 +128,59 @@ public class WeatherTool implements SyncTool {
                         .build();
         HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
         return resp.body();
+    }
+
+    private String fetchForecast(double lat, double lon) throws Exception {
+        String url = WEATHER_URL
+                + "?latitude=" + lat
+                + "&longitude=" + lon
+                + "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
+                + "precipitation_sum,wind_speed_10m_max"
+                + "&timezone=auto";
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        return resp.body();
+    }
+
+    private ToolResult parseForecast(String json, String location) throws Exception {
+        JsonNode root = mapper.readTree(json);
+        JsonNode daily = root.get("daily");
+        if (daily == null) {
+            return ToolResult.error("weather", "No forecast data available");
+        }
+
+        JsonNode times = daily.get("time");
+        JsonNode maxTemps = daily.get("temperature_2m_max");
+        JsonNode minTemps = daily.get("temperature_2m_min");
+        JsonNode codes = daily.get("weather_code");
+        JsonNode precip = daily.get("precipitation_sum");
+        JsonNode wind = daily.get("wind_speed_10m_max");
+        String tz = root.path("timezone").asText("UTC");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("7-day forecast for ").append(location).append(" (").append(tz).append("):\n\n");
+
+        int days = times != null ? times.size() : 0;
+        for (int i = 0; i < days; i++) {
+            String date = times.get(i).asText();
+            double hi = maxTemps != null ? maxTemps.get(i).asDouble() : 0;
+            double lo = minTemps != null ? minTemps.get(i).asDouble() : 0;
+            int wCode = codes != null ? codes.get(i).asInt() : -1;
+            double rain = precip != null ? precip.get(i).asDouble() : 0;
+            double maxWind = wind != null ? wind.get(i).asDouble() : 0;
+
+            sb.append(String.format("  %s: %s, %.0f/%.0f°C",
+                    date, weatherCodeToText(wCode), lo, hi));
+            if (rain > 0) sb.append(String.format(", %.1fmm rain", rain));
+            if (maxWind > 0) sb.append(String.format(", wind %.0f km/h", maxWind));
+            sb.append('\n');
+        }
+
+        return ToolResult.success("weather", sb.toString().trim());
     }
 
     private ToolResult parseWeather(String json, String location) throws Exception {
