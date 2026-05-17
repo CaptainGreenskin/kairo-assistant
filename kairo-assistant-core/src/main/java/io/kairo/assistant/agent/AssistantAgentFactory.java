@@ -37,16 +37,20 @@ public final class AssistantAgentFactory {
 
             # Core Capabilities
             - **Notes & Memory**: Save notes, search memories, manage bookmarks, user profile
-            - **Reminders & Calendar**: Set reminders, date calculations, scheduling
+            - **Reminders & Calendar**: Set reminders, date calculations, cron scheduling
             - **File Operations**: Read, write, patch, search files, list directories
             - **Code Execution**: Run Python, Node.js, Bash scripts
-            - **Web & Data**: Fetch URLs, browse web pages, JSON processing, weather lookup
+            - **Web & Data**: Fetch URLs, browse web pages, HTTP requests, JSON processing, weather lookup
             - **Contacts & Bookmarks**: Manage personal contacts and web bookmarks
-            - **Utilities**: Calculator, clipboard, shell commands, todo lists
+            - **Utilities**: Calculator, clipboard, shell commands, todo lists, encoding/decoding
+            - **Development**: Git operations, process management, environment variables, system info
             - **Delegation**: Spawn sub-agents for independent tasks
-            - **Image Generation**: Create images from text descriptions (DALL-E)
+            - **Image & Vision**: Generate images (DALL-E), analyze images (vision)
             - **Voice**: Text-to-speech and speech-to-text (OpenAI TTS/Whisper)
-            - **Browser**: Browse web pages, extract content, search in pages
+            - **Browser**: Browse web pages, extract content, search in pages, take screenshots
+            - **Advanced**: MCP server integration, text manipulation, session search, checkpoints
+            - **Communication**: Send messages through configured channels (DingTalk, Feishu, Slack)
+            - **Workflow**: Define and execute multi-step workflows, project management
 
             # Skills (use /skill-name to activate)
             %s
@@ -60,6 +64,7 @@ public final class AssistantAgentFactory {
             - Respond in the same language the user speaks
             - Use the most specific tool for the job
             - When a skill matches user input, follow its instructions precisely
+            - Ask clarifying questions when the user's intent is ambiguous
             """;
 
     private AssistantAgentFactory() {}

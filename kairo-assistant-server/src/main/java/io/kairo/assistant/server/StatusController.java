@@ -186,6 +186,68 @@ public class StatusController {
         return result;
     }
 
+    @PostMapping("/tools/execute")
+    public Mono<Map<String, Object>> executeTool(@RequestBody Map<String, Object> body) {
+        String toolName = (String) body.get("tool");
+        if (toolName == null || toolName.isBlank()) {
+            return Mono.just(Map.of("error", "tool name is required"));
+        }
+
+        boolean exists = session.toolRegistry().getAll().stream()
+                .anyMatch(t -> t.name().equals(toolName));
+        if (!exists) {
+            return Mono.just(Map.of("error", "unknown tool: " + toolName));
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> args = body.get("args") instanceof Map
+                ? (Map<String, Object>) body.get("args") : Map.of();
+
+        return session.toolExecutor().execute(toolName, args)
+                .map(result -> {
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("tool", toolName);
+                    resp.put("success", !result.isError());
+                    resp.put("content", result.content());
+                    return resp;
+                })
+                .onErrorResume(e -> Mono.just(Map.of(
+                        "tool", toolName, "error", e.getMessage())));
+    }
+
+    @GetMapping("/context")
+    public Map<String, Object> getContext() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (session.agent() instanceof io.kairo.core.agent.DefaultReActAgent reactAgent) {
+            var history = reactAgent.conversationHistory();
+            result.put("messageCount", history.size());
+            result.put("totalTokens", reactAgent.totalTokensUsed());
+            result.put("state", reactAgent.state().name());
+            result.put("messages", history.stream()
+                    .map(msg -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("role", msg.role().name().toLowerCase());
+                        String text = msg.text();
+                        if (text.length() > 200) text = text.substring(0, 197) + "...";
+                        m.put("preview", text);
+                        return m;
+                    }).toList());
+        } else {
+            result.put("state", session.agent().state().name());
+            result.put("note", "detailed context not available for this agent type");
+        }
+        return result;
+    }
+
+    @DeleteMapping("/context")
+    public Map<String, String> clearContext() {
+        if (session.agent() instanceof io.kairo.core.agent.DefaultReActAgent reactAgent) {
+            reactAgent.conversationHistory().clear();
+            return Map.of("status", "cleared");
+        }
+        return Map.of("error", "context clear not supported for this agent type");
+    }
+
     @GetMapping(value = "/metrics", produces = "text/plain")
     public String metrics() {
         return metrics.toPrometheus();

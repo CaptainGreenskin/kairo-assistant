@@ -31,7 +31,7 @@ public class CheckpointTool implements SyncTool {
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
         props.put("action", new JsonSchema("string", null, null,
-                "'save' to create checkpoint, 'list' to show checkpoints, 'info' for checkpoint details."));
+                "'save' to create checkpoint, 'list' to show checkpoints, 'info' for checkpoint details, 'restore' to resume from a checkpoint."));
         props.put("label", new JsonSchema("string", null, null,
                 "Label for the checkpoint (for save action)."));
         props.put("notes", new JsonSchema("string", null, null,
@@ -59,6 +59,7 @@ public class CheckpointTool implements SyncTool {
             case "save" -> saveCheckpoint(args, store, ctx);
             case "list" -> listCheckpoints(store);
             case "info" -> checkpointInfo(args, store);
+            case "restore" -> restoreCheckpoint(args, store);
             default -> ToolResult.error("checkpoint", "Unknown action: " + action);
         };
     }
@@ -111,6 +112,25 @@ public class CheckpointTool implements SyncTool {
         }
 
         return ToolResult.success("checkpoint", entries.get(0).content());
+    }
+
+    private ToolResult restoreCheckpoint(Map<String, Object> args, MemoryStore store) {
+        String label = (String) args.get("label");
+        if (label == null) {
+            return ToolResult.error("checkpoint", "'label' required for restore action");
+        }
+
+        List<MemoryEntry> entries = store.search("CHECKPOINT:" + label,
+                MemoryScope.SESSION, List.of("checkpoint")).collectList().block();
+        if (entries == null || entries.isEmpty()) {
+            return ToolResult.error("checkpoint", "Checkpoint not found: " + label);
+        }
+
+        String content = entries.get(0).content();
+        return ToolResult.success("checkpoint",
+                "Restored context from checkpoint '" + label + "'.\n"
+                        + "Resume from this state:\n\n" + content
+                        + "\n\nPlease continue from where this checkpoint was saved.");
     }
 
     private MemoryStore resolveMemoryStore(ToolContext ctx) {

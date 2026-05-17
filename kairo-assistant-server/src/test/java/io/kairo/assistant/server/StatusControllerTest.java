@@ -319,6 +319,95 @@ class StatusControllerTest {
     }
 
     @Test
+    void executeToolWithMissingNameReturnsError() {
+        var result = controller.executeTool(Map.of()).block();
+        assertNotNull(result);
+        assertEquals("tool name is required", result.get("error"));
+    }
+
+    @Test
+    void executeToolWithBlankNameReturnsError() {
+        var result = controller.executeTool(Map.of("tool", "  ")).block();
+        assertNotNull(result);
+        assertEquals("tool name is required", result.get("error"));
+    }
+
+    @Test
+    void executeToolWithUnknownToolReturnsError() {
+        var result = controller.executeTool(Map.of("tool", "nonexistent_tool")).block();
+        assertNotNull(result);
+        assertEquals("unknown tool: nonexistent_tool", result.get("error"));
+    }
+
+    @Test
+    void executeToolWithValidToolReturnsResult() {
+        var resultExecutor = new TestFixtures.StubToolExecutor() {
+            @Override
+            public reactor.core.publisher.Mono<io.kairo.api.tool.ToolResult> execute(
+                    String name, Map<String, Object> input) {
+                return reactor.core.publisher.Mono.just(
+                        io.kairo.api.tool.ToolResult.success(name, "executed ok"));
+            }
+        };
+        var config = TestFixtures.defaultConfig();
+        var skillRegistry = AssistantSkills.createRegistry();
+        var sess = new AssistantSession(
+                new TestFixtures.StubAgent(), toolRegistry, resultExecutor,
+                new InMemoryStore(), new TestFixtures.StubCronScheduler(),
+                skillRegistry,
+                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                config);
+        var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
+
+        var result = ctrl.executeTool(Map.of("tool", "test_tool")).block();
+        assertNotNull(result);
+        assertEquals("test_tool", result.get("tool"));
+        assertEquals(true, result.get("success"));
+        assertEquals("executed ok", result.get("content"));
+    }
+
+    @Test
+    void executeToolWithArgsPassesThemThrough() {
+        var resultExecutor = new TestFixtures.StubToolExecutor() {
+            @Override
+            public reactor.core.publisher.Mono<io.kairo.api.tool.ToolResult> execute(
+                    String name, Map<String, Object> input) {
+                String text = (String) input.getOrDefault("text", "none");
+                return reactor.core.publisher.Mono.just(
+                        io.kairo.api.tool.ToolResult.success(name, "got: " + text));
+            }
+        };
+        var config = TestFixtures.defaultConfig();
+        var skillRegistry = AssistantSkills.createRegistry();
+        var sess = new AssistantSession(
+                new TestFixtures.StubAgent(), toolRegistry, resultExecutor,
+                new InMemoryStore(), new TestFixtures.StubCronScheduler(),
+                skillRegistry,
+                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                config);
+        var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
+
+        var result = ctrl.executeTool(Map.of("tool", "test_tool", "args", Map.of("text", "hello"))).block();
+        assertNotNull(result);
+        assertEquals("got: hello", result.get("content"));
+    }
+
+    @Test
+    void getContextReturnsNoteForNonReactAgent() {
+        var result = controller.getContext();
+        assertNotNull(result);
+        assertEquals("IDLE", result.get("state"));
+        assertEquals("detailed context not available for this agent type", result.get("note"));
+    }
+
+    @Test
+    void clearContextReturnsErrorForNonReactAgent() {
+        var result = controller.clearContext();
+        assertNotNull(result);
+        assertEquals("context clear not supported for this agent type", result.get("error"));
+    }
+
+    @Test
     void endpointAnalyticsReturnsEmptyByDefault() {
         var result = controller.endpointAnalytics();
         @SuppressWarnings("unchecked")

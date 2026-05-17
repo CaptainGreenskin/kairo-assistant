@@ -46,6 +46,27 @@ class CheckpointToolTest {
     }
 
     @Test
+    void restoreReturnsCheckpointContext() {
+        tool.execute(Map.of("action", "save", "label", "r1", "notes", "Before refactoring"), ctx).block();
+        ToolResult r = tool.execute(Map.of("action", "restore", "label", "r1"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("Restored context").contains("r1").contains("Before refactoring");
+    }
+
+    @Test
+    void restoreNotFound() {
+        ToolResult r = tool.execute(Map.of("action", "restore", "label", "nonexistent"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void restoreMissingLabel() {
+        ToolResult r = tool.execute(Map.of("action", "restore"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("label");
+    }
+
+    @Test
     void noStoreErrors() {
         ToolContext noStore = new ToolContext("a", "s", null);
         ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
