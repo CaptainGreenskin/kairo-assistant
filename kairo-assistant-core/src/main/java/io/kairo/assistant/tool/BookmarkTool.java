@@ -30,6 +30,7 @@ import reactor.core.publisher.Mono;
 public class BookmarkTool implements SyncTool {
 
     private static final String TAG = "bookmark";
+    private static final double DEFAULT_BOOKMARK_IMPORTANCE = 0.6;
 
     @Override
     public JsonSchema inputSchema() {
@@ -93,7 +94,7 @@ public class BookmarkTool implements SyncTool {
         String content = title + "\n" + url;
         MemoryEntry entry = new MemoryEntry(
                 id, null, content, null,
-                MemoryScope.GLOBAL, 0.6, null, tags,
+                MemoryScope.GLOBAL, DEFAULT_BOOKMARK_IMPORTANCE, null, tags,
                 Instant.now(), Map.of("url", url, "title", title));
 
         return store.save(entry)

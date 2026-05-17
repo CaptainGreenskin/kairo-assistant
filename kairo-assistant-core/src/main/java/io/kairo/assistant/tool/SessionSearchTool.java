@@ -24,6 +24,9 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class SessionSearchTool implements SyncTool {
 
+    private static final int DEFAULT_SEARCH_LIMIT = 10;
+    private static final int MAX_SEARCH_LIMIT = 50;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -54,9 +57,9 @@ public class SessionSearchTool implements SyncTool {
                 default -> MemoryScope.GLOBAL;
             };
 
-            int limit = 10;
+            int limit = DEFAULT_SEARCH_LIMIT;
             if (args.get("limit") instanceof Number n) {
-                limit = Math.max(1, Math.min(50, n.intValue()));
+                limit = Math.max(1, Math.min(MAX_SEARCH_LIMIT, n.intValue()));
             }
 
             int finalLimit = limit;

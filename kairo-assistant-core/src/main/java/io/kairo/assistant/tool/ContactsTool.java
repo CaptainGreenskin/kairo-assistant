@@ -29,6 +29,8 @@ import reactor.core.publisher.Mono;
 public class ContactsTool implements SyncTool {
 
     private static final String TAG = "contact";
+    private static final double DEFAULT_CONTACT_IMPORTANCE = 0.7;
+    private static final int MAX_SEARCH_RESULTS = 20;
 
     @Override
     public JsonSchema inputSchema() {
@@ -87,7 +89,7 @@ public class ContactsTool implements SyncTool {
 
         MemoryEntry entry = new MemoryEntry(
                 id, null, content.toString(), null,
-                MemoryScope.GLOBAL, 0.7, null,
+                MemoryScope.GLOBAL, DEFAULT_CONTACT_IMPORTANCE, null,
                 Set.of(TAG), Instant.now(), meta);
 
         return store.save(entry)
@@ -101,7 +103,7 @@ public class ContactsTool implements SyncTool {
             return Mono.just(ToolResult.error("contacts", "'query' required for search"));
         }
         return store.search(query, MemoryScope.GLOBAL, List.of(TAG))
-                .take(20)
+                .take(MAX_SEARCH_RESULTS)
                 .map(e -> "[" + e.id() + "] " + e.content())
                 .collectList()
                 .map(items -> {

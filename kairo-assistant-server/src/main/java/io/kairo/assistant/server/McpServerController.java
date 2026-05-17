@@ -65,13 +65,30 @@ public class McpServerController {
 
     @SuppressWarnings("unchecked")
     private Mono<Map<String, Object>> toolsCall(Object id, Map<String, Object> request) {
-        Map<String, Object> params = (Map<String, Object>) request.get("params");
-        if (params == null) {
+        Object rawParams = request.get("params");
+        if (rawParams == null) {
             return Mono.just(errorResponse(id, -32602, "Missing params"));
         }
+        if (!(rawParams instanceof Map)) {
+            return Mono.just(errorResponse(id, -32602, "params must be an object"));
+        }
+        Map<String, Object> params = (Map<String, Object>) rawParams;
 
-        String toolName = (String) params.get("name");
-        Map<String, Object> arguments = (Map<String, Object>) params.getOrDefault("arguments", Map.of());
+        Object rawName = params.get("name");
+        if (rawName != null && !(rawName instanceof String)) {
+            return Mono.just(errorResponse(id, -32602, "tool name must be a string"));
+        }
+        String toolName = (String) rawName;
+
+        Object rawArgs = params.get("arguments");
+        Map<String, Object> arguments;
+        if (rawArgs == null) {
+            arguments = Map.of();
+        } else if (rawArgs instanceof Map) {
+            arguments = (Map<String, Object>) rawArgs;
+        } else {
+            return Mono.just(errorResponse(id, -32602, "arguments must be an object"));
+        }
 
         if (toolName == null) {
             return Mono.just(errorResponse(id, -32602, "Missing tool name"));

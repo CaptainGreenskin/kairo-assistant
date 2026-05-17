@@ -13,10 +13,16 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class ToolCallLogger implements ToolExecutor {
+
+    private static final Logger log = LoggerFactory.getLogger(ToolCallLogger.class);
+
+    private static final int DEFAULT_HISTORY_SIZE = 200;
 
     private final ToolExecutor delegate;
     private final int maxEntries;
@@ -27,7 +33,7 @@ public class ToolCallLogger implements ToolExecutor {
     private final CopyOnWriteArrayList<Consumer<ToolCallRecord>> listeners = new CopyOnWriteArrayList<>();
 
     public ToolCallLogger(ToolExecutor delegate) {
-        this(delegate, 200);
+        this(delegate, DEFAULT_HISTORY_SIZE);
     }
 
     public ToolCallLogger(ToolExecutor delegate, int maxEntries) {
@@ -90,7 +96,8 @@ public class ToolCallLogger implements ToolExecutor {
         for (Consumer<ToolCallRecord> listener : listeners) {
             try {
                 listener.accept(entry);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.warn("Tool call listener threw exception for {}: {}", entry.toolName(), e.getMessage());
             }
         }
     }

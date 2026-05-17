@@ -87,6 +87,23 @@ class ChannelControllerTest {
     }
 
     @Test
+    void sendWithEmptyContentReturnsError() {
+        var body = Map.of("content", "   ");
+        var result = controller.send("some-channel", body).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+        assertTrue(String.valueOf(result.get("error")).contains("content must not be empty"));
+    }
+
+    @Test
+    void dingTalkWebhookWithEmptyTextReturnsError() {
+        var body = Map.<String, Object>of("text", Map.of("content", ""));
+        var result = controller.dingTalkWebhook(body).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void listReturnsAvailableChannels() {
         var result = controller.list();

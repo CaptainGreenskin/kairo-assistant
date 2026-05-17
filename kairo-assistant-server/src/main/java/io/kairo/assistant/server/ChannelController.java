@@ -61,6 +61,9 @@ public class ChannelController {
     @PostMapping(value = "/dingtalk/webhook", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Map<String, Object>> dingTalkWebhook(@RequestBody Map<String, Object> body) {
         String text = extractText(body);
+        if (text == null || text.isBlank()) {
+            return Mono.just(Map.of("error", (Object) "empty message text"));
+        }
         String senderId = String.valueOf(body.getOrDefault("senderId", "unknown"));
         String senderName = String.valueOf(body.getOrDefault("senderNick", "user"));
 
@@ -72,6 +75,9 @@ public class ChannelController {
     @PostMapping(value = "/feishu/webhook", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Map<String, Object>> feishuWebhook(@RequestBody Map<String, Object> body) {
         String text = extractFeishuText(body);
+        if (text == null || text.isBlank()) {
+            return Mono.just(Map.of("error", (Object) "empty message text"));
+        }
         String senderId = extractNestedString(body, "event", "sender", "sender_id", "open_id");
         if (senderId == null) senderId = "unknown";
 
@@ -86,6 +92,10 @@ public class ChannelController {
             @RequestBody Map<String, String> body) {
         String dest = body.getOrDefault("destination", "default");
         String content = body.getOrDefault("content", "");
+
+        if (content.isBlank()) {
+            return Mono.just(Map.of("error", (Object) "content must not be empty"));
+        }
 
         ChannelIdentity identity = ChannelIdentity.of(channelId, dest);
         ChannelMessage message = ChannelMessage.of(identity, content);

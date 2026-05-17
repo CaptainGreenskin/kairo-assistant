@@ -28,6 +28,10 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class DelegateTaskTool implements SyncTool {
 
+    private static final int DEFAULT_MAX_ITERATIONS = 15;
+    private static final int MAX_ALLOWED_ITERATIONS = 50;
+    private static final int DEFAULT_TOKEN_BUDGET = 64_000;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -46,9 +50,9 @@ public class DelegateTaskTool implements SyncTool {
             }
 
             String context = (String) args.getOrDefault("context", "");
-            int maxIter = 15;
+            int maxIter = DEFAULT_MAX_ITERATIONS;
             if (args.get("maxIterations") instanceof Number n) {
-                maxIter = Math.max(1, Math.min(50, n.intValue()));
+                maxIter = Math.max(1, Math.min(MAX_ALLOWED_ITERATIONS, n.intValue()));
             }
 
             Object modelProvider = ctx.dependencies().get("modelProvider");
@@ -68,7 +72,7 @@ public class DelegateTaskTool implements SyncTool {
                         .systemPrompt("You are a focused sub-agent. Complete the given task concisely.")
                         .maxIterations(maxIter)
                         .timeout(Duration.ofMinutes(5))
-                        .tokenBudget(64_000)
+                        .tokenBudget(DEFAULT_TOKEN_BUDGET)
                         .build();
 
                 return subAgent.call(Msg.of(MsgRole.USER, prompt))

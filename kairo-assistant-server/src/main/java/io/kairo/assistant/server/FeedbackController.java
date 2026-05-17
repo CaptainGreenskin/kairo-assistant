@@ -40,16 +40,24 @@ public class FeedbackController {
 
     public record FeedbackEntry(String content, String rating, String feedback, String timestamp) {}
 
+    private static final int MAX_RECENT_FEEDBACK = 500;
+    private static final java.util.Set<String> VALID_RATINGS =
+            java.util.Set.of("positive", "negative", "neutral");
+
     @PostMapping("/feedback")
     public Map<String, Object> submitFeedback(@RequestBody Map<String, String> body) {
         String content = body.getOrDefault("content", "");
         String rating = body.getOrDefault("rating", "");
         String fb = body.get("feedback");
 
+        if (!rating.isEmpty() && !VALID_RATINGS.contains(rating)) {
+            return Map.of("error", "rating must be one of: positive, negative, neutral");
+        }
+
         var entry = new FeedbackEntry(content, rating, fb, Instant.now().toString());
         recentFeedback.add(entry);
-        if (recentFeedback.size() > 500) {
-            recentFeedback.subList(0, recentFeedback.size() - 500).clear();
+        if (recentFeedback.size() > MAX_RECENT_FEEDBACK) {
+            recentFeedback.subList(0, recentFeedback.size() - MAX_RECENT_FEEDBACK).clear();
         }
 
         persistFeedback(entry);

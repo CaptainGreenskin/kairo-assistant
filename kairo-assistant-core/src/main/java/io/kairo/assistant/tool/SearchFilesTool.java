@@ -25,6 +25,10 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class SearchFilesTool implements SyncTool {
 
+    private static final int DEFAULT_MAX_RESULTS = 50;
+    private static final int MAX_RESULTS_LIMIT = 200;
+    private static final int SEARCH_TIMEOUT_SECONDS = 30;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -48,9 +52,9 @@ public class SearchFilesTool implements SyncTool {
 
         String path = (String) args.getOrDefault("path", ".");
         String include = (String) args.get("include");
-        int maxResults = 50;
+        int maxResults = DEFAULT_MAX_RESULTS;
         if (args.get("maxResults") instanceof Number n) {
-            maxResults = Math.max(1, Math.min(200, n.intValue()));
+            maxResults = Math.max(1, Math.min(MAX_RESULTS_LIMIT, n.intValue()));
         }
 
         try {
@@ -76,7 +80,7 @@ public class SearchFilesTool implements SyncTool {
                 }
             }
 
-            process.waitFor(30, TimeUnit.SECONDS);
+            process.waitFor(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             String result = output.toString().trim();
             if (result.isEmpty()) {
                 return ToolResult.success("search_files", "No matches found for: " + pattern);

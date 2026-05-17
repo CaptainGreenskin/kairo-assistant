@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 public class ConversationStore {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationStore.class);
+    private static final int PREVIEW_MAX_LENGTH = 60;
 
     private final Path baseDir;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -86,6 +87,7 @@ public class ConversationStore {
                             return Files.getLastModifiedTime(b).compareTo(
                                     Files.getLastModifiedTime(a));
                         } catch (IOException e) {
+                            log.debug("Failed to compare modification times: {}", e.getMessage());
                             return 0;
                         }
                     })
@@ -137,7 +139,8 @@ public class ConversationStore {
                                     }
                                 }
                             }
-                        } catch (IOException ignored) {
+                        } catch (IOException e) {
+                            log.debug("Failed to read session file during search: {}", e.getMessage());
                         }
                     });
         } catch (IOException e) {
@@ -265,11 +268,13 @@ public class ConversationStore {
                     Map<String, Object> entry = mapper.readValue(line, Map.class);
                     String content = (String) entry.get("content");
                     if (content != null) {
-                        return content.length() > 60 ? content.substring(0, 57) + "..." : content;
+                        return content.length() > PREVIEW_MAX_LENGTH
+                            ? content.substring(0, PREVIEW_MAX_LENGTH - 3) + "..." : content;
                     }
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            log.debug("Failed to read session preview from {}: {}", file.getFileName(), e.getMessage());
         }
         return "(empty)";
     }

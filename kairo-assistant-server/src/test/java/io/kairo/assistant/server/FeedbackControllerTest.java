@@ -61,6 +61,13 @@ class FeedbackControllerTest {
     }
 
     @Test
+    void submitInvalidRatingReturnsError() {
+        var result = controller.submitFeedback(Map.of("content", "test", "rating", "excellent"));
+        assertTrue(result.containsKey("error"));
+        assertTrue(result.get("error").toString().contains("rating"));
+    }
+
+    @Test
     void submitBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var broadcastController = new FeedbackController(TestFixtures.defaultSession(), events::add);

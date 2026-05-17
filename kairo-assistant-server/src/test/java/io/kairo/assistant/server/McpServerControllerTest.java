@@ -155,6 +155,51 @@ class McpServerControllerTest {
         assertEquals(-32602, error.get("code"));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void toolsCallWithNonMapParamsReturnsError() {
+        var request = Map.of("jsonrpc", (Object) "2.0", "id", (Object) 9,
+                "method", (Object) "tools/call",
+                "params", (Object) "not-a-map");
+        var result = controller.handle(request).block();
+
+        assertNotNull(result);
+        var error = (Map<String, Object>) result.get("error");
+        assertNotNull(error);
+        assertEquals(-32602, error.get("code"));
+        assertTrue(error.get("message").toString().contains("params must be an object"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void toolsCallWithNonStringNameReturnsError() {
+        var request = Map.of("jsonrpc", (Object) "2.0", "id", (Object) 10,
+                "method", (Object) "tools/call",
+                "params", (Object) Map.of("name", (Object) 123));
+        var result = controller.handle(request).block();
+
+        assertNotNull(result);
+        var error = (Map<String, Object>) result.get("error");
+        assertNotNull(error);
+        assertEquals(-32602, error.get("code"));
+        assertTrue(error.get("message").toString().contains("tool name must be a string"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void toolsCallWithNonMapArgumentsReturnsError() {
+        var request = Map.of("jsonrpc", (Object) "2.0", "id", (Object) 11,
+                "method", (Object) "tools/call",
+                "params", (Object) Map.of("name", (Object) "test_tool", "arguments", (Object) "bad"));
+        var result = controller.handle(request).block();
+
+        assertNotNull(result);
+        var error = (Map<String, Object>) result.get("error");
+        assertNotNull(error);
+        assertEquals(-32602, error.get("code"));
+        assertTrue(error.get("message").toString().contains("arguments must be an object"));
+    }
+
     private static class McpToolExecutor implements ToolExecutor {
         @Override public Mono<ToolResult> execute(String name, Map<String, Object> input) {
             return Mono.just(ToolResult.success("tool-1", "result for " + name));

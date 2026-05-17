@@ -3,12 +3,14 @@ package io.kairo.assistant.i18n;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class I18n {
 
+    private static final Logger log = LoggerFactory.getLogger(I18n.class);
     private static final String DEFAULT_LOCALE = "en";
     private static volatile String currentLocale = DEFAULT_LOCALE;
     private static final ConcurrentHashMap<String, Properties> BUNDLES = new ConcurrentHashMap<>();
@@ -53,7 +55,8 @@ public final class I18n {
                 if (is != null) {
                     props.load(new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8));
                 }
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                log.warn("Failed to load locale bundle '{}': {}", loc, e.getMessage());
             }
             return props;
         });

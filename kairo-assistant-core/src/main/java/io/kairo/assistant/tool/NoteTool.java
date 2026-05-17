@@ -26,6 +26,8 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class NoteTool implements SyncTool {
 
+    private static final double DEFAULT_NOTE_IMPORTANCE = 0.7;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -90,7 +92,7 @@ public class NoteTool implements SyncTool {
                         content,
                         null,
                         MemoryScope.GLOBAL,
-                        0.7,
+                        DEFAULT_NOTE_IMPORTANCE,
                         null,
                         tags,
                         java.time.Instant.now(),

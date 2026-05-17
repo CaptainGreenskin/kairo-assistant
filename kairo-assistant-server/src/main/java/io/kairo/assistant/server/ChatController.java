@@ -20,6 +20,8 @@ import reactor.core.publisher.Sinks;
 @RequestMapping("/api")
 public class ChatController {
 
+    private static final int MAX_TITLE_LENGTH = 50;
+
     private final AssistantSession session;
     private final SessionManager sessionManager;
     private final AssistantWebSocketHandler wsHandler;
@@ -47,8 +49,8 @@ public class ChatController {
         int msgNum = clientSession.incrementMessages();
 
         if (msgNum == 1) {
-            String title = request.message().length() > 50
-                    ? request.message().substring(0, 47) + "..." : request.message();
+            String title = request.message().length() > MAX_TITLE_LENGTH
+                    ? request.message().substring(0, MAX_TITLE_LENGTH - 3) + "..." : request.message();
             title = title.replaceAll("[\\r\\n]+", " ").trim();
             clientSession.conversationStore().setTitle(
                     clientSession.conversationStore().currentSessionId(), title);
