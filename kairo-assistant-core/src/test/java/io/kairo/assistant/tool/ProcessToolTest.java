@@ -40,4 +40,33 @@ class ProcessToolTest {
         assertThat(r.isError()).isFalse();
         assertThat(r.content()).contains("PID: " + pid);
     }
+
+    @Test
+    void infoNonExistentPidErrors() {
+        ToolResult r = tool.execute(Map.of("action", "info", "pid", 999999999), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("PID not found");
+    }
+
+    @Test
+    void infoRequiresPid() {
+        ToolResult r = tool.execute(Map.of("action", "info"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("'pid' required");
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "kill"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void defaultActionIsList() {
+        ToolResult r = tool.execute(Map.of(), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("processes");
+    }
 }

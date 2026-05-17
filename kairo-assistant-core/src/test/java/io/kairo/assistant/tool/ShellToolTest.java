@@ -51,4 +51,43 @@ class ShellToolTest {
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("/tmp");
     }
+
+    @Test
+    void infiniteOutputTruncatesAndKills() {
+        ToolResult result = tool.execute(
+                Map.of("command", "while true; do echo x; done", "timeout", 5),
+                emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void blankCommandErrors() {
+        ToolResult result = tool.execute(Map.of("command", "  "), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void emptyOutputReportsNoOutput() {
+        ToolResult result = tool.execute(Map.of("command", "true"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("(no output)");
+    }
+
+    @Test
+    void timeoutClampedToMax300() {
+        ToolResult result = tool.execute(
+                Map.of("command", "echo fast", "timeout", 999), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+    }
+
+    @Test
+    void exitCodeInMetadata() {
+        ToolResult result = tool.execute(Map.of("command", "echo ok"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.metadata()).containsEntry("exitCode", 0);
+    }
 }

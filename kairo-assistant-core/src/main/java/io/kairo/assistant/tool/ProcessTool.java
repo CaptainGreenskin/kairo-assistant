@@ -80,10 +80,6 @@ public class ProcessTool implements SyncTool {
                     yield ToolResult.error("process", "'pid' required for info");
                 }
                 long pid = n.longValue();
-                ProcessHandle.of(pid)
-                        .map(this::formatProcessDetail)
-                        .map(s -> ToolResult.success("process", s))
-                        .orElse(ToolResult.error("process", "PID not found: " + pid));
                 yield ProcessHandle.of(pid)
                         .map(this::formatProcessDetail)
                         .map(s -> ToolResult.success("process", s))

@@ -42,4 +42,34 @@ class CronToolTest {
                 Map.of("action", "next", "expression", "30 14 * * *"), ctx).block();
         assertThat(r.isError()).isFalse();
     }
+
+    @Test
+    void expressionRequired() {
+        ToolResult r = tool.execute(Map.of("action", "explain"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("'expression' required");
+    }
+
+    @Test
+    void blankExpressionErrors() {
+        ToolResult r = tool.execute(
+                Map.of("action", "explain", "expression", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(
+                Map.of("action", "validate", "expression", "* * * * *"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void explainCommaField() {
+        ToolResult r = tool.execute(
+                Map.of("action", "explain", "expression", "0 9 * * 1,3,5"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("1,3,5");
+    }
 }
