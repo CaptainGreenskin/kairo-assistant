@@ -28,6 +28,11 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class BrowserTool implements SyncTool {
 
+    private static final int MAX_CONTENT_CHARS = 5000;
+    private static final int MAX_LINKS_PER_PAGE = 50;
+    private static final int MAX_SEARCH_RESULTS = 10;
+    private static final int SNIPPET_CONTEXT_CHARS = 100;
+
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -102,8 +107,8 @@ public class BrowserTool implements SyncTool {
     private ToolResult fetchContent(String url, String html) {
         String title = extractTitle(html);
         String text = htmlToText(html);
-        if (text.length() > 5000) {
-            text = text.substring(0, 5000) + "\n... (truncated)";
+        if (text.length() > MAX_CONTENT_CHARS) {
+            text = text.substring(0, MAX_CONTENT_CHARS) + "\n... (truncated)";
         }
 
         StringBuilder sb = new StringBuilder();
@@ -123,7 +128,7 @@ public class BrowserTool implements SyncTool {
         StringBuilder sb = new StringBuilder();
         sb.append("Links found on ").append(url).append(":\n\n");
         int count = 0;
-        while (matcher.find() && count < 50) {
+        while (matcher.find() && count < MAX_LINKS_PER_PAGE) {
             String href = matcher.group(1);
             String linkText = TAG_PATTERN.matcher(matcher.group(2)).replaceAll("").trim();
             if (!href.startsWith("#") && !href.startsWith("javascript:")) {
@@ -151,9 +156,9 @@ public class BrowserTool implements SyncTool {
 
         int pos = 0;
         int count = 0;
-        while ((pos = lowerText.indexOf(lowerQuery, pos)) >= 0 && count < 10) {
-            int start = Math.max(0, pos - 100);
-            int end = Math.min(text.length(), pos + query.length() + 100);
+        while ((pos = lowerText.indexOf(lowerQuery, pos)) >= 0 && count < MAX_SEARCH_RESULTS) {
+            int start = Math.max(0, pos - SNIPPET_CONTEXT_CHARS);
+            int end = Math.min(text.length(), pos + query.length() + SNIPPET_CONTEXT_CHARS);
             String snippet = text.substring(start, end).trim();
             sb.append(count + 1).append(". ...").append(snippet).append("...\n\n");
             pos += query.length();

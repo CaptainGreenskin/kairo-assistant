@@ -69,23 +69,29 @@ public class GitTool implements SyncTool {
                     .directory(Path.of(dir).toFile())
                     .redirectErrorStream(true)
                     .start();
+            try {
+                boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+                String output;
+                try (var is = process.getInputStream()) {
+                    output = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
 
-            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                if (!finished) {
+                    process.destroyForcibly();
+                    return ToolResult.error("git", "Command timed out");
+                }
 
-            if (!finished) {
+                output = ToolLimits.truncate(output);
+
+                if (output.isBlank()) {
+                    output = "(no output)";
+                }
+
+                return ToolResult.success("git", output,
+                        Map.of("exitCode", process.exitValue()));
+            } finally {
                 process.destroyForcibly();
-                return ToolResult.error("git", "Command timed out");
             }
-
-            output = ToolLimits.truncate(output);
-
-            if (output.isBlank()) {
-                output = "(no output)";
-            }
-
-            return ToolResult.success("git", output,
-                    Map.of("exitCode", process.exitValue()));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();

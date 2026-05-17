@@ -8,6 +8,7 @@ import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,7 +60,11 @@ public class ScreenshotTool implements SyncTool {
             }
 
             Process process = pb.start();
+            try {
+                process.getInputStream().close();
+            } catch (IOException ignored) {}
             int exitCode = process.waitFor();
+            process.destroyForcibly();
             if (exitCode == 0 && Files.exists(Path.of(output))) {
                 long size = Files.size(Path.of(output));
                 return ToolResult.success("screenshot",
@@ -74,7 +79,12 @@ public class ScreenshotTool implements SyncTool {
     private boolean commandExists(String cmd) {
         try {
             Process p = new ProcessBuilder("which", cmd).start();
-            return p.waitFor() == 0;
+            try {
+                p.getInputStream().close();
+            } catch (IOException ignored) {}
+            boolean found = p.waitFor() == 0;
+            p.destroyForcibly();
+            return found;
         } catch (Exception e) {
             return false;
         }

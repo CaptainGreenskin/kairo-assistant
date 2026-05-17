@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 public class ChannelGateway {
 
     private static final Logger log = LoggerFactory.getLogger(ChannelGateway.class);
+    private static final int LOG_TRUNCATE_LENGTH = 100;
 
     private final Channel channel;
     private final Agent agent;
@@ -39,7 +40,7 @@ public class ChannelGateway {
                 "Inbound from [{}] via [{}]: {}",
                 message.identity().destination(),
                 message.identity().channelId(),
-                truncate(message.content(), 100));
+                truncate(message.content(), LOG_TRUNCATE_LENGTH));
 
         return agent
                 .call(Msg.of(MsgRole.USER, message.content()))
@@ -63,7 +64,7 @@ public class ChannelGateway {
                 "Outbound to [{}] via [{}]: {}",
                 message.identity().destination(),
                 message.identity().channelId(),
-                truncate(message.content(), 100));
+                truncate(message.content(), LOG_TRUNCATE_LENGTH));
         return channel.sender().send(message);
     }
 

@@ -28,6 +28,9 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class CodeExecuteTool implements SyncTool {
 
+    private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+    private static final int MAX_TIMEOUT_SECONDS = 120;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -50,9 +53,9 @@ public class CodeExecuteTool implements SyncTool {
         }
 
         String language = (String) args.getOrDefault("language", "python");
-        int timeout = 30;
+        int timeout = DEFAULT_TIMEOUT_SECONDS;
         if (args.get("timeout") instanceof Number n) {
-            timeout = Math.max(1, Math.min(120, n.intValue()));
+            timeout = Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, n.intValue()));
         }
 
         String suffix = switch (language.toLowerCase()) {

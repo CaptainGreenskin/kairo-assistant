@@ -25,6 +25,9 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class ListDirectoryTool implements SyncTool {
 
+    private static final int DEFAULT_MAX_DEPTH = 3;
+    private static final int MAX_DEPTH_LIMIT = 10;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -42,9 +45,9 @@ public class ListDirectoryTool implements SyncTool {
     private ToolResult doExecute(Map<String, Object> args) {
         String pathStr = (String) args.getOrDefault("path", ".");
         boolean recursive = Boolean.TRUE.equals(args.get("recursive"));
-        int maxDepth = 3;
+        int maxDepth = DEFAULT_MAX_DEPTH;
         if (args.get("maxDepth") instanceof Number n) {
-            maxDepth = Math.max(1, Math.min(10, n.intValue()));
+            maxDepth = Math.max(1, Math.min(MAX_DEPTH_LIMIT, n.intValue()));
         }
 
         Path path = Path.of(pathStr);

@@ -26,6 +26,8 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class HttpRequestTool implements SyncTool {
 
+    private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -60,7 +62,7 @@ public class HttpRequestTool implements SyncTool {
         String method = (String) args.getOrDefault("method", "GET");
         String headersStr = (String) args.get("headers");
         String body = (String) args.get("body");
-        int timeout = 30;
+        int timeout = DEFAULT_TIMEOUT_SECONDS;
         if (args.get("timeout") instanceof Number n) timeout = n.intValue();
 
         try {

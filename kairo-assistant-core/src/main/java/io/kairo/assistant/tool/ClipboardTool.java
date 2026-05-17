@@ -70,8 +70,12 @@ public class ClipboardTool implements SyncTool {
             Process p = new ProcessBuilder(cmd)
                     .redirectErrorStream(true)
                     .start();
-            String content = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String content;
+            try (var is = p.getInputStream()) {
+                content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
             int exit = p.waitFor();
+            p.destroyForcibly();
             if (exit != 0) {
                 return ToolResult.error("clipboard", "Clipboard read failed (exit=" + exit + ")");
             }

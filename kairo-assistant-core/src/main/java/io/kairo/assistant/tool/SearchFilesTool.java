@@ -68,24 +68,30 @@ public class SearchFilesTool implements SyncTool {
 
             ProcessBuilder pb = new ProcessBuilder("sh", "-c", cmd.toString()).redirectErrorStream(true);
             Process process = pb.start();
-
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                int count = 0;
-                while ((line = reader.readLine()) != null && count < maxResults) {
-                    output.append(line).append('\n');
-                    count++;
+            try {
+                StringBuilder output = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    int count = 0;
+                    while ((line = reader.readLine()) != null && count < maxResults) {
+                        output.append(line).append('\n');
+                        count++;
+                    }
                 }
-            }
 
-            process.waitFor(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            String result = output.toString().trim();
-            if (result.isEmpty()) {
-                return ToolResult.success("search_files", "No matches found for: " + pattern);
+                if (!process.waitFor(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    return ToolResult.error("search_files", "Search timed out after " + SEARCH_TIMEOUT_SECONDS + "s");
+                }
+                String result = output.toString().trim();
+                if (result.isEmpty()) {
+                    return ToolResult.success("search_files", "No matches found for: " + pattern);
+                }
+                return ToolResult.success("search_files", result);
+            } finally {
+                process.destroyForcibly();
             }
-            return ToolResult.success("search_files", result);
         } catch (Exception e) {
             return ToolResult.error("search_files", "Search failed: " + e.getMessage());
         }

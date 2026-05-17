@@ -22,6 +22,8 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class ProcessTool implements SyncTool {
 
+    private static final int DEFAULT_PROCESS_LIMIT = 20;
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -43,7 +45,7 @@ public class ProcessTool implements SyncTool {
 
     private ToolResult doExecute(Map<String, Object> args) {
         String action = (String) args.getOrDefault("action", "list");
-        int limit = 20;
+        int limit = DEFAULT_PROCESS_LIMIT;
         if (args.get("limit") instanceof Number n) limit = n.intValue();
 
         return switch (action.toLowerCase()) {

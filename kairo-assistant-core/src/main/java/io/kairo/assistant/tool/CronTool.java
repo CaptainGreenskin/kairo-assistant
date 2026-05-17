@@ -24,6 +24,8 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class CronTool implements SyncTool {
 
+    private static final int DEFAULT_UPCOMING_COUNT = 5;
+    private static final int MAX_UPCOMING_COUNT = 20;
     private static final DateTimeFormatter FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
@@ -60,8 +62,8 @@ public class CronTool implements SyncTool {
         return switch (action.toLowerCase()) {
             case "explain" -> ToolResult.success("cron", explainCron(parts));
             case "next" -> {
-                int count = 5;
-                if (args.get("count") instanceof Number n) count = Math.max(1, Math.min(20, n.intValue()));
+                int count = DEFAULT_UPCOMING_COUNT;
+                if (args.get("count") instanceof Number n) count = Math.max(1, Math.min(MAX_UPCOMING_COUNT, n.intValue()));
                 yield ToolResult.success("cron",
                         "Cron: " + expr + "\n" + explainCron(parts)
                                 + "\n(Note: precise next-fire calculation requires a cron library)");
