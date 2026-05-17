@@ -22,6 +22,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sun.misc.Signal;
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
@@ -35,6 +37,8 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
 public class ReplSession {
+
+    private static final Logger log = LoggerFactory.getLogger(ReplSession.class);
 
     private final AssistantSession session;
     private final ConversationStore conversationStore;
@@ -702,7 +706,9 @@ public class ReplSession {
                 Properties props = new Properties();
                 props.load(Files.newBufferedReader(file));
                 props.forEach((k, v) -> aliases.put(k.toString(), v.toString()));
-            } catch (IOException ignored) {}
+            } catch (IOException e) {
+                log.debug("Failed to load aliases: {}", e.getMessage());
+            }
         }
     }
 
@@ -713,7 +719,9 @@ public class ReplSession {
             aliases.forEach(props::setProperty);
             Files.createDirectories(file.getParent());
             props.store(Files.newBufferedWriter(file), "Kairo Assistant aliases");
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            log.warn("Failed to save aliases: {}", e.getMessage());
+        }
     }
 
     private void runToolDirect(String arg) {
@@ -914,7 +922,9 @@ public class ReplSession {
                 Properties props = new Properties();
                 props.load(Files.newBufferedReader(file));
                 props.forEach((k, v) -> snippets.put(k.toString(), v.toString()));
-            } catch (IOException ignored) {}
+            } catch (IOException e) {
+                log.debug("Failed to load snippets: {}", e.getMessage());
+            }
         }
     }
 
@@ -925,7 +935,9 @@ public class ReplSession {
             snippets.forEach(props::setProperty);
             Files.createDirectories(file.getParent());
             props.store(Files.newBufferedWriter(file), "Kairo Assistant snippets");
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            log.warn("Failed to save snippets: {}", e.getMessage());
+        }
     }
 
     private void handleWatch(String arg) {
@@ -1608,7 +1620,9 @@ public class ReplSession {
                 props.load(Files.newBufferedReader(file));
                 templates.clear();
                 props.forEach((k, v) -> templates.put(k.toString(), v.toString()));
-            } catch (IOException ignored) {}
+            } catch (IOException e) {
+                log.debug("Failed to load templates: {}", e.getMessage());
+            }
         }
     }
 
@@ -1619,7 +1633,9 @@ public class ReplSession {
             var props = new java.util.Properties();
             templates.forEach(props::setProperty);
             props.store(Files.newBufferedWriter(file), "Kairo Assistant templates");
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            log.warn("Failed to save templates: {}", e.getMessage());
+        }
     }
 
     private void printStats() {
@@ -1998,7 +2014,9 @@ public class ReplSession {
         String comment = "";
         try {
             comment = reader.readLine("Comment (optional): ").trim();
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to read feedback comment: {}", e.getMessage());
+        }
 
         Path feedbackFile = Path.of(session.config().dataDir(), "feedback.jsonl");
         try {
@@ -2099,7 +2117,9 @@ public class ReplSession {
                     List<String> cmds = new ArrayList<>(List.of(v.toString().split("\\|\\|")));
                     macros.put(name, cmds);
                 });
-            } catch (IOException ignored) {}
+            } catch (IOException e) {
+                log.debug("Failed to load macros: {}", e.getMessage());
+            }
         }
     }
 
@@ -2110,7 +2130,9 @@ public class ReplSession {
             var props = new java.util.Properties();
             macros.forEach((name, cmds) -> props.setProperty(name, String.join("||", cmds)));
             props.store(Files.newBufferedWriter(file), "Kairo Assistant macros");
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            log.warn("Failed to save macros: {}", e.getMessage());
+        }
     }
 
     private void handleFormat(String arg) {
