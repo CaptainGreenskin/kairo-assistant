@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  kairo-assistant:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - KAIRO_PROVIDER=${KAIRO_PROVIDER:-openai}
+      - KAIRO_MODEL=${KAIRO_MODEL:-gpt-4o}
+      - KAIRO_API_KEY=${KAIRO_API_KEY}
+      - KAIRO_LOCALE=${KAIRO_LOCALE:-en}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    volumes:
+      - kairo-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  kairo-data:
