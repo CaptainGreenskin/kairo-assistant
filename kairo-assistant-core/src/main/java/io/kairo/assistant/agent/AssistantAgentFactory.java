@@ -18,6 +18,8 @@ import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.HashMap;
@@ -26,6 +28,8 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 public final class AssistantAgentFactory {
+
+    private static final Logger log = LoggerFactory.getLogger(AssistantAgentFactory.class);
 
     private static final String SYSTEM_PROMPT_TEMPLATE =
             """
@@ -128,6 +132,7 @@ public final class AssistantAgentFactory {
             try {
                 return Files.readString(file);
             } catch (IOException e) {
+                log.warn("Failed to read custom instructions from {}: {}", file, e.getMessage());
                 return null;
             }
         }

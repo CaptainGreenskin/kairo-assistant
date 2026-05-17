@@ -214,6 +214,7 @@ public class ConversationStore {
             Map<String, String> meta = mapper.readValue(Files.readString(metaFile), Map.class);
             return meta.get("title");
         } catch (IOException e) {
+            log.debug("Failed to read session title for {}: {}", sessionId, e.getMessage());
             return null;
         }
     }

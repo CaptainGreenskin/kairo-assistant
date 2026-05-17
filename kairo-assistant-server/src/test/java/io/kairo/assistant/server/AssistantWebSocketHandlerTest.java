@@ -1,5 +1,6 @@
 package io.kairo.assistant.server;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.agent.Agent;
@@ -25,6 +26,7 @@ import java.nio.file.Path;
 import java.security.Principal;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -102,8 +104,7 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("message", "hello"));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(300);
-
+        await().atMost(2, TimeUnit.SECONDS).until(() -> ws.sentMessages.size() >= 2);
         assertTrue(ws.sentMessages.size() >= 2, "should send thinking + response");
     }
 
@@ -115,9 +116,7 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("message", "  "));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(100);
-
-        assertFalse(ws.sentMessages.isEmpty());
+        await().atMost(2, TimeUnit.SECONDS).until(() -> !ws.sentMessages.isEmpty());
         String sent = ws.sentMessages.get(0).getPayload().toString();
         assertTrue(sent.contains("error"));
     }
@@ -130,10 +129,7 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("type", "interrupt"));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(100);
-
-        assertTrue(interruptCalled.get());
-        assertFalse(ws.sentMessages.isEmpty());
+        await().atMost(2, TimeUnit.SECONDS).until(() -> interruptCalled.get() && !ws.sentMessages.isEmpty());
         String sent = ws.sentMessages.get(0).getPayload().toString();
         assertTrue(sent.contains("interrupted"));
     }
@@ -153,9 +149,7 @@ class AssistantWebSocketHandlerTest {
 
         handler.handleMessage(ws, new TextMessage("not-valid-json"));
 
-        Thread.sleep(100);
-
-        assertFalse(ws.sentMessages.isEmpty());
+        await().atMost(2, TimeUnit.SECONDS).until(() -> !ws.sentMessages.isEmpty());
         String sent = ws.sentMessages.get(0).getPayload().toString();
         assertTrue(sent.contains("error"));
     }
@@ -185,9 +179,8 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("message", "hello"));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(200);
-
-        assertTrue(ws.sentMessages.isEmpty(), "closed session should not receive messages");
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1))
+                .until(() -> ws.sentMessages.isEmpty());
     }
 
     @Test
@@ -220,8 +213,7 @@ class AssistantWebSocketHandlerTest {
                 "file", Map.of("name", "test.txt", "type", "text/plain", "data", base64Data));
         handler.handleMessage(ws, new TextMessage(mapper.writeValueAsString(payload)));
 
-        Thread.sleep(300);
-
+        await().atMost(2, TimeUnit.SECONDS).until(() -> ws.sentMessages.size() >= 2);
         assertTrue(ws.sentMessages.size() >= 2, "should send thinking + response");
     }
 
@@ -233,8 +225,8 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("message", "What is the weather in Tokyo?"));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(300);
-
+        await().atMost(2, TimeUnit.SECONDS).until(() -> ws.sentMessages.stream()
+                .anyMatch(m -> m.getPayload().toString().contains("response")));
         boolean hasTitleConfirm = ws.sentMessages.stream()
                 .anyMatch(m -> m.getPayload().toString().contains("response"));
         assertTrue(hasTitleConfirm, "should have received a response");
@@ -249,9 +241,7 @@ class AssistantWebSocketHandlerTest {
         String payload = mapper.writeValueAsString(Map.of("message", longMsg));
         handler.handleMessage(ws, new TextMessage(payload));
 
-        Thread.sleep(300);
-
-        assertTrue(ws.sentMessages.size() >= 2);
+        await().atMost(2, TimeUnit.SECONDS).until(() -> ws.sentMessages.size() >= 2);
     }
 
     @Test
@@ -262,9 +252,7 @@ class AssistantWebSocketHandlerTest {
         String huge = "x".repeat(200_000);
         handler.handleMessage(ws, new TextMessage(huge));
 
-        Thread.sleep(100);
-
-        assertFalse(ws.sentMessages.isEmpty());
+        await().atMost(2, TimeUnit.SECONDS).until(() -> !ws.sentMessages.isEmpty());
         String sent = ws.sentMessages.get(0).getPayload().toString();
         assertTrue(sent.contains("too large"));
     }
@@ -281,8 +269,7 @@ class AssistantWebSocketHandlerTest {
                 "file", Map.of("name", "img.png", "type", "image/png", "data", base64Data));
         handler.handleMessage(ws, new TextMessage(mapper.writeValueAsString(payload)));
 
-        Thread.sleep(300);
-
+        await().atMost(2, TimeUnit.SECONDS).until(() -> ws.sentMessages.size() >= 2);
         assertTrue(ws.sentMessages.size() >= 2, "file-only message should not be treated as empty");
     }
 
