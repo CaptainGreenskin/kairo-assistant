@@ -78,11 +78,13 @@ public class TodoTool implements SyncTool {
     private ToolResult doComplete(Map<String, Object> args) {
         String id = (String) args.get("id");
         if (id == null) return ToolResult.error("todo", "'id' is required");
-        for (int i = 0; i < items.size(); i++) {
-            TodoItem old = items.get(i);
-            if (old.id.equals(id)) {
-                items.set(i, new TodoItem(old.id, old.text, true, old.createdAt));
-                return ToolResult.success("todo", "Completed: " + old.text);
+        synchronized (items) {
+            for (int i = 0; i < items.size(); i++) {
+                TodoItem old = items.get(i);
+                if (old.id.equals(id)) {
+                    items.set(i, new TodoItem(old.id, old.text, true, old.createdAt));
+                    return ToolResult.success("todo", "Completed: " + old.text);
+                }
             }
         }
         return ToolResult.error("todo", "Todo not found: " + id);
