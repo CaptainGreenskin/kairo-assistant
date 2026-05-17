@@ -30,10 +30,13 @@ public class StatusController {
     private final AssistantSession session;
     private final ConversationStore conversationStore;
     private final MetricsCollector metrics;
+    private final SessionManager sessionManager;
 
-    public StatusController(AssistantSession session, MetricsCollector metrics) {
+    public StatusController(AssistantSession session, MetricsCollector metrics,
+                            SessionManager sessionManager) {
         this.session = session;
         this.metrics = metrics;
+        this.sessionManager = sessionManager;
         this.conversationStore = new ConversationStore(
                 Path.of(session.config().dataDir(), "conversations", "web"));
     }
@@ -58,6 +61,14 @@ public class StatusController {
         result.put("status", "ok");
         result.put("uptime", java.time.Duration.between(startTime, Instant.now()).toSeconds());
         result.put("version", "0.1.0");
+        result.put("agentState", session.agent().state().name());
+        result.put("activeSessions", sessionManager.activeCount());
+
+        Runtime rt = Runtime.getRuntime();
+        long usedMB = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+        long maxMB = rt.maxMemory() / (1024 * 1024);
+        result.put("memoryUsedMB", usedMB);
+        result.put("memoryMaxMB", maxMB);
 
         Map<String, String> components = new LinkedHashMap<>();
         components.put("agent", "ok");

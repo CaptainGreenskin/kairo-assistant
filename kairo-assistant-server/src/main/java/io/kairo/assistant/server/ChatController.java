@@ -44,6 +44,15 @@ public class ChatController {
         String clientId = sessionId != null ? sessionId : UUID.randomUUID().toString().substring(0, 8);
         var clientSession = sessionManager.getOrCreate(clientId);
         clientSession.conversationStore().appendMessage("user", request.message());
+        int msgNum = clientSession.incrementMessages();
+
+        if (msgNum == 1) {
+            String title = request.message().length() > 50
+                    ? request.message().substring(0, 47) + "..." : request.message();
+            title = title.replaceAll("[\\r\\n]+", " ").trim();
+            clientSession.conversationStore().setTitle(
+                    clientSession.conversationStore().currentSessionId(), title);
+        }
 
         Msg input = Msg.of(MsgRole.USER, request.message());
         return session.agent().call(input)

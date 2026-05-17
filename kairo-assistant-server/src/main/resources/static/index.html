@@ -556,17 +556,66 @@
         }
 
         /* Connection quality indicator */
+        .connection-quality {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 6px;
+            font-size: 10px;
+            color: var(--text-dim);
+            cursor: default;
+        }
+        .signal-bars {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 1px;
+            height: 12px;
+        }
+        .signal-bars .bar {
+            width: 3px;
+            background: var(--border);
+            border-radius: 1px;
+            transition: background 0.3s;
+        }
+        .signal-bars .bar:nth-child(1) { height: 4px; }
+        .signal-bars .bar:nth-child(2) { height: 6px; }
+        .signal-bars .bar:nth-child(3) { height: 9px; }
+        .signal-bars .bar:nth-child(4) { height: 12px; }
+        .signal-bars.excellent .bar { background: var(--success); }
+        .signal-bars.good .bar:nth-child(-n+3) { background: var(--success); }
+        .signal-bars.fair .bar:nth-child(-n+2) { background: var(--warn); }
+        .signal-bars.poor .bar:nth-child(1) { background: #ef5350; }
+        .signal-bars.offline .bar { background: var(--border); }
         .latency-badge {
             font-size: 10px;
-            padding: 1px 6px;
-            border-radius: 8px;
-            background: var(--primary);
             color: var(--text-dim);
-            margin-left: 6px;
         }
         .latency-badge.good { color: var(--success); }
         .latency-badge.slow { color: var(--warn); }
         .latency-badge.bad { color: #ef5350; }
+
+        /* Streaming progress bar */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), #a78bfa, var(--accent));
+            background-size: 200% 100%;
+            animation: progress-shimmer 1.5s ease-in-out infinite;
+            transition: width 0.3s ease, opacity 0.3s;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .progress-bar.active {
+            opacity: 1;
+        }
+        @keyframes progress-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
 
         /* File upload */
         .file-preview {
@@ -771,12 +820,16 @@
     </style>
 </head>
 <body>
+    <div id="progress-bar" class="progress-bar"></div>
     <header role="banner">
         <div class="header-left">
             <h1>Kairo Assistant</h1>
             <span id="status" class="status-badge disconnected" role="status" aria-live="polite">Connecting</span>
             <span id="agent-state" style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--primary);color:var(--text-dim);">IDLE</span>
-            <span id="latency" class="latency-badge" style="display:none;" aria-label="Connection latency"></span>
+            <span id="connection-quality" class="connection-quality" style="display:none;" aria-label="Connection quality" title="Connection quality">
+                <span id="signal-bars" class="signal-bars offline"><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span></span>
+                <span id="latency" class="latency-badge"></span>
+            </span>
         </div>
         <div class="header-actions" role="toolbar" aria-label="Main toolbar">
             <button onclick="toggleConvPanel()" aria-label="Toggle conversations panel">Chats</button>
@@ -1191,6 +1244,7 @@
                 statusEl.textContent = 'Disconnected';
                 statusEl.className = 'status-badge disconnected';
                 setProcessing(false);
+                stopLatencyMonitor();
                 const reason = event.code === 1000 ? 'Normal close' : event.code === 1006 ? 'Connection lost' : `Code ${event.code}`;
                 showReconnectBanner();
                 scheduleReconnect();
@@ -1238,6 +1292,9 @@
             if (banner) banner.style.display = 'none';
         }
 
+        let progressInterval = null;
+        let progressWidth = 0;
+
         function setProcessing(active) {
             isProcessing = active;
             sendBtn.disabled = active;
@@ -1246,6 +1303,26 @@
             if (stateEl) {
                 stateEl.textContent = active ? 'THINKING' : 'IDLE';
                 stateEl.style.color = active ? 'var(--accent)' : 'var(--text-dim)';
+            }
+            const bar = document.getElementById('progress-bar');
+            if (active) {
+                progressWidth = 5;
+                bar.style.width = progressWidth + '%';
+                bar.classList.add('active');
+                if (progressInterval) clearInterval(progressInterval);
+                progressInterval = setInterval(() => {
+                    if (progressWidth < 90) {
+                        progressWidth += (90 - progressWidth) * 0.03;
+                        bar.style.width = progressWidth + '%';
+                    }
+                }, 200);
+            } else {
+                if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+                bar.style.width = '100%';
+                setTimeout(() => {
+                    bar.classList.remove('active');
+                    bar.style.width = '0%';
+                }, 300);
             }
         }
 
@@ -2615,12 +2692,42 @@
             }
         });
 
+        function trapFocus(overlay) {
+            const focusable = overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            overlay._trapHandler = (e) => {
+                if (e.key !== 'Tab') return;
+                if (e.shiftKey) {
+                    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+                } else {
+                    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+                }
+            };
+            overlay.addEventListener('keydown', overlay._trapHandler);
+            first.focus();
+        }
+
+        function releaseFocus(overlay) {
+            if (overlay._trapHandler) {
+                overlay.removeEventListener('keydown', overlay._trapHandler);
+                delete overlay._trapHandler;
+            }
+        }
+
         function toggleShortcuts() {
-            document.getElementById('shortcuts-overlay').classList.toggle('open');
+            const el = document.getElementById('shortcuts-overlay');
+            el.classList.toggle('open');
+            if (el.classList.contains('open')) trapFocus(el);
+            else releaseFocus(el);
         }
 
         function toggleSettings() {
-            document.getElementById('settings-overlay').classList.toggle('open');
+            const el = document.getElementById('settings-overlay');
+            el.classList.toggle('open');
+            if (el.classList.contains('open')) trapFocus(el);
+            else releaseFocus(el);
         }
 
         const appSettings = JSON.parse(localStorage.getItem('kairo-settings') || '{}');
@@ -3196,28 +3303,55 @@
             }
         }
 
-        // Connection latency measurement
+        // Connection quality measurement
         let latencyInterval = null;
+        let latencyHistory = [];
+
         function measureLatency() {
+            const qualityEl = document.getElementById('connection-quality');
             const latencyEl = document.getElementById('latency');
+            const barsEl = document.getElementById('signal-bars');
             const start = performance.now();
             fetch('/api/health', { cache: 'no-store' })
                 .then(() => {
                     const ms = Math.round(performance.now() - start);
-                    latencyEl.style.display = 'inline';
+                    latencyHistory.push(ms);
+                    if (latencyHistory.length > 10) latencyHistory.shift();
+
+                    const avg = Math.round(latencyHistory.reduce((a, b) => a + b, 0) / latencyHistory.length);
+
+                    qualityEl.style.display = 'inline-flex';
                     latencyEl.textContent = ms + 'ms';
                     latencyEl.className = 'latency-badge ' +
                         (ms < 100 ? 'good' : ms < 500 ? 'slow' : 'bad');
+
+                    let quality;
+                    if (avg < 50) quality = 'excellent';
+                    else if (avg < 150) quality = 'good';
+                    else if (avg < 500) quality = 'fair';
+                    else quality = 'poor';
+
+                    barsEl.className = 'signal-bars ' + quality;
+                    qualityEl.title = `Latency: ${ms}ms (avg: ${avg}ms)`;
                 })
                 .catch(() => {
-                    latencyEl.style.display = 'none';
+                    barsEl.className = 'signal-bars offline';
+                    latencyEl.textContent = '';
+                    qualityEl.title = 'Disconnected';
                 });
         }
 
         function startLatencyMonitor() {
             if (latencyInterval) clearInterval(latencyInterval);
+            latencyHistory = [];
             measureLatency();
-            latencyInterval = setInterval(measureLatency, 30000);
+            latencyInterval = setInterval(measureLatency, 15000);
+        }
+
+        function stopLatencyMonitor() {
+            if (latencyInterval) { clearInterval(latencyInterval); latencyInterval = null; }
+            const barsEl = document.getElementById('signal-bars');
+            if (barsEl) barsEl.className = 'signal-bars offline';
         }
 
         function relativeTime(ms) {
@@ -3503,6 +3637,7 @@
 
         function deleteConversation(id, e) {
             e.stopPropagation();
+            if (!confirm('Delete this conversation?')) return;
             conversations = conversations.filter(c => c.id !== id);
             if (activeConvId === id) {
                 if (conversations.length > 0) {
@@ -3513,6 +3648,8 @@
             }
             saveConversations();
             renderConvList();
+            fetch(`/api/sessions/${id}`, { method: 'DELETE' }).catch(() => {});
+            addNotification('success', 'Conversation deleted');
         }
 
         function renameConversation(id, e) {

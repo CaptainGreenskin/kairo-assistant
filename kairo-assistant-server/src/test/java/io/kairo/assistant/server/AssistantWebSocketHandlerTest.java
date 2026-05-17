@@ -226,6 +226,50 @@ class AssistantWebSocketHandlerTest {
     }
 
     @Test
+    void autoTitleSetOnFirstMessage() throws Exception {
+        var ws = new StubWebSocketSession("ws-title");
+        handler.afterConnectionEstablished(ws);
+
+        String payload = mapper.writeValueAsString(Map.of("message", "What is the weather in Tokyo?"));
+        handler.handleMessage(ws, new TextMessage(payload));
+
+        Thread.sleep(300);
+
+        boolean hasTitleConfirm = ws.sentMessages.stream()
+                .anyMatch(m -> m.getPayload().toString().contains("response"));
+        assertTrue(hasTitleConfirm, "should have received a response");
+    }
+
+    @Test
+    void autoTitleTruncatesLongMessages() throws Exception {
+        var ws = new StubWebSocketSession("ws-title-long");
+        handler.afterConnectionEstablished(ws);
+
+        String longMsg = "A".repeat(100);
+        String payload = mapper.writeValueAsString(Map.of("message", longMsg));
+        handler.handleMessage(ws, new TextMessage(payload));
+
+        Thread.sleep(300);
+
+        assertTrue(ws.sentMessages.size() >= 2);
+    }
+
+    @Test
+    void rejectsOversizedMessage() throws Exception {
+        var ws = new StubWebSocketSession("ws-oversized");
+        handler.afterConnectionEstablished(ws);
+
+        String huge = "x".repeat(200_000);
+        handler.handleMessage(ws, new TextMessage(huge));
+
+        Thread.sleep(100);
+
+        assertFalse(ws.sentMessages.isEmpty());
+        String sent = ws.sentMessages.get(0).getPayload().toString();
+        assertTrue(sent.contains("too large"));
+    }
+
+    @Test
     void handleMessageWithFileOnlyNoText() throws Exception {
         var ws = new StubWebSocketSession("ws-file-only");
         handler.afterConnectionEstablished(ws);

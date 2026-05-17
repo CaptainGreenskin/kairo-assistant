@@ -45,7 +45,7 @@ class StatusControllerTest {
                 new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
                 config);
 
-        controller = new StatusController(session, new MetricsCollector());
+        controller = new StatusController(session, new MetricsCollector(), new SessionManager(session));
     }
 
     @Test
@@ -156,7 +156,7 @@ class StatusControllerTest {
                 new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
                 config);
 
-        var loggedController = new StatusController(loggedSession, new MetricsCollector());
+        var loggedController = new StatusController(loggedSession, new MetricsCollector(), new SessionManager(loggedSession));
         var result = loggedController.toolHistory(10);
 
         assertEquals(2L, result.get("totalCalls"));
@@ -341,6 +341,6 @@ class StatusControllerTest {
                 new TestFixtures.StubCronScheduler(), skillRegistry,
                 new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
                 config);
-        return new StatusController(session, new MetricsCollector());
+        return new StatusController(session, new MetricsCollector(), new SessionManager(session));
     }
 }

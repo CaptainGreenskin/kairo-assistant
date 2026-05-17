@@ -230,6 +230,31 @@ public class ConversationStore {
         }
     }
 
+    public List<Map<String, Object>> loadMostRecentMessages() {
+        try (var stream = Files.list(baseDir)) {
+            return stream
+                    .filter(p -> p.toString().endsWith(".jsonl"))
+                    .max((a, b) -> {
+                        try {
+                            return Files.getLastModifiedTime(a).compareTo(
+                                    Files.getLastModifiedTime(b));
+                        } catch (IOException e) {
+                            return 0;
+                        }
+                    })
+                    .map(p -> {
+                        String id = p.getFileName().toString().replace(".jsonl", "");
+                        return loadSession(id).stream()
+                                .filter(e -> "message".equals(e.get("type")))
+                                .toList();
+                    })
+                    .orElse(List.of());
+        } catch (IOException e) {
+            log.error("Failed to find most recent session", e);
+            return List.of();
+        }
+    }
+
     private String getSessionPreview(Path file) {
         try {
             List<String> lines = Files.readAllLines(file);

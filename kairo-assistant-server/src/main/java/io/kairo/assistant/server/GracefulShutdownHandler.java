@@ -36,7 +36,17 @@ public class GracefulShutdownHandler {
 
         int activeSessions = sessionManager.activeCount();
         if (activeSessions > 0) {
-            log.info("Closing {} active client session(s)", activeSessions);
+            log.info("Saving {} active client session(s)", activeSessions);
+            sessionManager.all().forEach((id, clientSession) -> {
+                try {
+                    if (clientSession.messageCount() > 0) {
+                        clientSession.conversationStore().endSession();
+                        log.debug("Saved conversation for client {}", id);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to save conversation for {}: {}", id, e.getMessage());
+                }
+            });
         }
 
         log.info("Shutdown metrics: messages={}, tokens={}, agentCalls={}",

@@ -33,6 +33,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
 
     private static final Logger log = LoggerFactory.getLogger(AssistantWebSocketHandler.class);
     private static final long PING_INTERVAL_SECONDS = 30;
+    private static final int MAX_MESSAGE_SIZE = 102_400;
 
     private final AssistantSession session;
     private final SessionManager sessionManager;
@@ -145,6 +146,11 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
 
     @Override
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) {
+        if (message.getPayloadLength() > MAX_MESSAGE_SIZE) {
+            sendJson(wsSession, Map.of("type", "error",
+                    "message", "Message too large (max " + MAX_MESSAGE_SIZE / 1024 + "KB)"));
+            return;
+        }
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> payload = mapper.readValue(message.getPayload(), Map.class);
@@ -172,8 +178,15 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
 
             var clientSession = sessionManager.getOrCreate(wsSession.getId());
             clientSession.conversationStore().appendMessage("user", text);
-            clientSession.incrementMessages();
+            int msgNum = clientSession.incrementMessages();
             metrics.recordMessage();
+
+            if (msgNum == 1) {
+                String title = text.length() > 50 ? text.substring(0, 47) + "..." : text;
+                title = title.replaceAll("[\\r\\n]+", " ").trim();
+                clientSession.conversationStore().setTitle(
+                        clientSession.conversationStore().currentSessionId(), title);
+            }
 
             long tokensBefore = session.agent() instanceof DefaultReActAgent ra
                     ? ra.totalTokensUsed() : 0;
