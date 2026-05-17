@@ -54,12 +54,10 @@ class ChannelControllerTest {
                 "senderId", "user123",
                 "senderNick", "Test User");
 
-        assertDoesNotThrow(() -> {
-            try {
-                controller.dingTalkWebhook(body).block();
-            } catch (Exception e) {
-            }
-        });
+        var result = controller.dingTalkWebhook(body)
+                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())))
+                .block();
+        assertNotNull(result);
     }
 
     @Test
@@ -69,12 +67,10 @@ class ChannelControllerTest {
                         "message", Map.of("content", "hello from feishu"),
                         "sender", Map.of("sender_id", Map.of("open_id", "ou_abc"))));
 
-        assertDoesNotThrow(() -> {
-            try {
-                controller.feishuWebhook(body).block();
-            } catch (Exception e) {
-            }
-        });
+        var result = controller.feishuWebhook(body)
+                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())))
+                .block();
+        assertNotNull(result);
     }
 
     @Test

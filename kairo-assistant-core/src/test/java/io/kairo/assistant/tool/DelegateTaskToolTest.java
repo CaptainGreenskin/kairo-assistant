@@ -26,7 +26,23 @@ class DelegateTaskToolTest {
     }
 
     @Test
+    void blankTaskErrors() {
+        ToolResult r = tool.execute(Map.of("task", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("task");
+    }
+
+    @Test
+    void emptyDepsNoModelProviderErrors() {
+        ToolContext withDeps = new ToolContext("a", "s", java.util.Map.of());
+        ToolResult r = tool.execute(Map.of("task", "Do it"), withDeps).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("ModelProvider");
+    }
+
+    @Test
     void hasInputSchema() {
         assertThat(tool.inputSchema().properties()).containsKey("task");
+        assertThat(tool.inputSchema().properties()).containsKey("maxIterations");
     }
 }

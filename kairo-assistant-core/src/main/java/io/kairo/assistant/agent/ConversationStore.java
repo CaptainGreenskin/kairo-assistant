@@ -104,7 +104,8 @@ public class ConversationStore {
                         try {
                             info.put("lastModified",
                                     Files.getLastModifiedTime(p).toInstant().toString());
-                        } catch (IOException ignored) {
+                        } catch (IOException e) {
+                            log.debug("Failed to read lastModified for {}: {}", id, e.getMessage());
                         }
                         sessions.add(info);
                     });

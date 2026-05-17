@@ -61,6 +61,27 @@ class TodoToolTest {
         assertThat(r.isError()).isTrue();
     }
 
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "purge"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void completeNonexistentIdErrors() {
+        ToolResult r = tool.execute(Map.of("action", "complete", "id", "zzz999"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("not found");
+    }
+
+    @Test
+    void deleteNonexistentIdErrors() {
+        ToolResult r = tool.execute(Map.of("action", "delete", "id", "zzz999"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("not found");
+    }
+
     private String extractId(String content) {
         int start = content.indexOf('[', content.indexOf(']') + 1) + 1;
         int end = content.indexOf(']', start);

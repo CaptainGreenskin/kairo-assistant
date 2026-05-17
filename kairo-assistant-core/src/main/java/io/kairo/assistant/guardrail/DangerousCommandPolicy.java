@@ -99,7 +99,6 @@ public class DangerousCommandPolicy implements GuardrailPolicy {
         return NAME;
     }
 
-    @SuppressWarnings("unchecked")
     private String extractCommand(Map<String, Object> args) {
         if (args == null) return null;
         for (String key : COMMAND_ARG_KEYS) {

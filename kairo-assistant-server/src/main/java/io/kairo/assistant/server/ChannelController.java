@@ -144,29 +144,29 @@ public class ChannelController {
         return current instanceof String s ? s : null;
     }
 
-    private DingTalkChannel findOrCreateDingTalk() {
-        String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
-        if (webhookUrl == null) webhookUrl = "https://oapi.dingtalk.com/robot/send";
-        DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
+    private final Map<String, Object> channels = new ConcurrentHashMap<>();
 
-        gateways.computeIfAbsent("dingtalk", id -> {
+    private DingTalkChannel findOrCreateDingTalk() {
+        return (DingTalkChannel) channels.computeIfAbsent("dingtalk", id -> {
+            String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
+            if (webhookUrl == null) webhookUrl = "https://oapi.dingtalk.com/robot/send";
+            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
             ChannelGateway gw = new ChannelGateway(channel, session.agent());
-            gw.start().block();
-            return gw;
+            gw.start().subscribe();
+            gateways.put("dingtalk", gw);
+            return channel;
         });
-        return channel;
     }
 
     private FeishuChannel findOrCreateFeishu() {
-        String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
-        if (webhookUrl == null) webhookUrl = "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
-        FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
-
-        gateways.computeIfAbsent("feishu", id -> {
+        return (FeishuChannel) channels.computeIfAbsent("feishu", id -> {
+            String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
+            if (webhookUrl == null) webhookUrl = "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
+            FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
             ChannelGateway gw = new ChannelGateway(channel, session.agent());
-            gw.start().block();
-            return gw;
+            gw.start().subscribe();
+            gateways.put("feishu", gw);
+            return channel;
         });
-        return channel;
     }
 }

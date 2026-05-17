@@ -25,8 +25,16 @@ class HttpRequestToolTest {
     }
 
     @Test
+    void blankUrlErrors() {
+        ToolResult r = tool.execute(Map.of("url", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
     void hasInputSchema() {
         assertThat(tool.inputSchema()).isNotNull();
         assertThat(tool.inputSchema().properties()).containsKey("url");
+        assertThat(tool.inputSchema().properties()).containsKey("method");
+        assertThat(tool.inputSchema().properties()).containsKey("headers");
     }
 }

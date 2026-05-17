@@ -19,15 +19,24 @@ class BrowserToolTest {
     }
 
     @Test
-    void searchRequiresQuery() {
+    void blankUrlErrors() {
+        ToolResult r = tool.execute(Map.of("url", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void unreachableUrlReturnsError() {
         ToolResult r = tool.execute(
                 Map.of("url", "http://localhost:1", "action", "search"), ctx).block();
         assertThat(r).isNotNull();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Failed to fetch");
     }
 
     @Test
     void hasInputSchema() {
         assertThat(tool.inputSchema().properties()).containsKey("url");
         assertThat(tool.inputSchema().properties()).containsKey("action");
+        assertThat(tool.inputSchema().properties()).containsKey("query");
     }
 }
