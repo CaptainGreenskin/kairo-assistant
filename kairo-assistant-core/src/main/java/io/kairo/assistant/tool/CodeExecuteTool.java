@@ -79,7 +79,7 @@ public class CodeExecuteTool implements SyncTool {
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 int chars = 0;
-                while ((line = reader.readLine()) != null && chars < 50_000) {
+                while ((line = reader.readLine()) != null && chars < ToolLimits.MAX_OUTPUT_CHARS) {
                     output.append(line).append('\n');
                     chars += line.length();
                 }

@@ -6,6 +6,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.tool.ToolCallLogger;
 import io.kairo.core.agent.DefaultReActAgent;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,6 +55,12 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         wireStreaming();
         wireToolEvents();
         startPingSchedule();
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        pingScheduler.shutdownNow();
+        log.info("WebSocket ping scheduler shut down");
     }
 
     private final java.util.function.Consumer<String> wsBroadcastConsumer = delta -> {

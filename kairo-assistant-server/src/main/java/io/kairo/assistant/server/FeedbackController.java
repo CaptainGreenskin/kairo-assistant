@@ -81,7 +81,7 @@ public class FeedbackController {
             Files.writeString(feedbackDir.resolve("ratings.log"), line,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
-            log.debug("Failed to persist feedback: {}", e.getMessage());
+            log.warn("Failed to persist feedback: {}", e.getMessage());
         }
     }
 }

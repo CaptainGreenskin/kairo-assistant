@@ -1,5 +1,7 @@
 package io.kairo.assistant.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.SyncTool;
@@ -26,6 +28,11 @@ import reactor.core.publisher.Mono;
         category = ToolCategory.EXTERNAL,
         sideEffect = ToolSideEffect.WRITE)
 public class ImageGenTool implements SyncTool {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     @Override
     public JsonSchema inputSchema() {
@@ -60,17 +67,10 @@ public class ImageGenTool implements SyncTool {
         }
 
         try {
-            String requestBody = String.format(
-                    """
-                    {"model":"%s","prompt":"%s","n":1,"size":"%s","response_format":"url"}
-                    """,
-                    model,
-                    prompt.replace("\"", "\\\"").replace("\n", " "),
-                    size);
-
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
+            Map<String, Object> reqMap = Map.of(
+                    "model", model, "prompt", prompt, "n", 1,
+                    "size", size, "response_format", "url");
+            String requestBody = MAPPER.writeValueAsString(reqMap);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.openai.com/v1/images/generations"))
@@ -80,18 +80,18 @@ public class ImageGenTool implements SyncTool {
                     .timeout(Duration.ofSeconds(60))
                     .build();
 
-            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (resp.statusCode() == 200) {
-                String body = resp.body();
-                int urlStart = body.indexOf("\"url\":\"") + 7;
-                int urlEnd = body.indexOf("\"", urlStart);
-                if (urlStart > 6 && urlEnd > urlStart) {
-                    String imageUrl = body.substring(urlStart, urlEnd);
-                    return ToolResult.success("image_gen",
-                            "Image generated: " + imageUrl);
+                JsonNode root = MAPPER.readTree(resp.body());
+                JsonNode data = root.path("data");
+                if (data.isArray() && !data.isEmpty()) {
+                    String imageUrl = data.get(0).path("url").asText("");
+                    if (!imageUrl.isEmpty()) {
+                        return ToolResult.success("image_gen", "Image generated: " + imageUrl);
+                    }
                 }
-                return ToolResult.success("image_gen", "Response: " + body);
+                return ToolResult.success("image_gen", "Response: " + resp.body());
             }
             return ToolResult.error("image_gen",
                     "API error (HTTP " + resp.statusCode() + "): " + resp.body());

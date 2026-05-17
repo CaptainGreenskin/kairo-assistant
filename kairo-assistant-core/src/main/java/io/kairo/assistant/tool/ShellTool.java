@@ -86,12 +86,12 @@ public class ShellTool implements SyncTool {
                                     process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 int charCount = 0;
-                while ((line = reader.readLine()) != null && charCount < 50_000) {
+                while ((line = reader.readLine()) != null && charCount < ToolLimits.MAX_OUTPUT_CHARS) {
                     output.append(line).append("\n");
                     charCount += line.length();
                 }
-                if (charCount >= 50_000) {
-                    output.append("\n... (output truncated at 50K chars)");
+                if (charCount >= ToolLimits.MAX_OUTPUT_CHARS) {
+                    output.append("\n... (output truncated at ").append(ToolLimits.MAX_OUTPUT_CHARS / 1000).append("K chars)");
                 }
             }
 

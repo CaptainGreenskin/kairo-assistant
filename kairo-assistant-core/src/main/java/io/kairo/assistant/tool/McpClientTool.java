@@ -27,6 +27,10 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class McpClientTool implements SyncTool {
 
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -111,10 +115,6 @@ public class McpClientTool implements SyncTool {
     }
 
     private HttpResponse<String> sendJsonRpc(String serverUrl, String body) throws Exception {
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(serverUrl))
                 .header("Content-Type", "application/json")
@@ -122,6 +122,6 @@ public class McpClientTool implements SyncTool {
                 .timeout(Duration.ofSeconds(30))
                 .build();
 
-        return client.send(request, HttpResponse.BodyHandlers.ofString());
+        return HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
     }
 }

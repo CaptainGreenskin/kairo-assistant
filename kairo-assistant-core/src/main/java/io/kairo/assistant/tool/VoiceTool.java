@@ -28,6 +28,10 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.WRITE)
 public class VoiceTool implements SyncTool {
 
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
     @Override
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
@@ -86,9 +90,7 @@ public class VoiceTool implements SyncTool {
                     text.replace("\"", "\\\"").replace("\n", " "),
                     voice);
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
+            HttpClient client = HTTP_CLIENT;
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.openai.com/v1/audio/speech"))
@@ -146,9 +148,7 @@ public class VoiceTool implements SyncTool {
             System.arraycopy(suffixBytes, 0, body, prefixBytes.length + audioBytes.length,
                     suffixBytes.length);
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
+            HttpClient client = HTTP_CLIENT;
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.openai.com/v1/audio/transcriptions"))

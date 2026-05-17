@@ -28,6 +28,10 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class BrowserTool implements SyncTool {
 
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
     private static final Pattern TITLE_PATTERN =
             Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]+>");
@@ -66,11 +70,6 @@ public class BrowserTool implements SyncTool {
         String action = args.get("action") instanceof String a ? a : "fetch";
 
         try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
-
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("User-Agent",
@@ -81,7 +80,7 @@ public class BrowserTool implements SyncTool {
                     .build();
 
             HttpResponse<String> resp =
-                    client.send(request, HttpResponse.BodyHandlers.ofString());
+                    HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (resp.statusCode() >= 400) {
                 return ToolResult.error("browser",

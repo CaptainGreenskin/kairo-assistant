@@ -7,8 +7,12 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class AssistantContextSources {
+
+    private static final Logger log = LoggerFactory.getLogger(AssistantContextSources.class);
 
     private AssistantContextSources() {}
 
@@ -52,6 +56,7 @@ public final class AssistantContextSources {
                 }
                 return "Recent memories:\n" + String.join("\n", recent);
             } catch (Exception e) {
+                log.warn("Failed to load recent memories for context: {}", e.getMessage());
                 return "";
             }
         });

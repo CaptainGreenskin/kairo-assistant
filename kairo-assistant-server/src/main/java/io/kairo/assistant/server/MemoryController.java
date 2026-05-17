@@ -80,7 +80,15 @@ public class MemoryController {
         }
         String id = String.valueOf(body.getOrDefault("id", UUID.randomUUID().toString()));
         String scopeStr = String.valueOf(body.getOrDefault("scope", "GLOBAL"));
-        double importance = Double.parseDouble(String.valueOf(body.getOrDefault("importance", "0.5")));
+        double importance;
+        try {
+            importance = Double.parseDouble(String.valueOf(body.getOrDefault("importance", "0.5")));
+        } catch (NumberFormatException e) {
+            return Mono.just(Map.of("error", "invalid importance value (must be a number 0.0-1.0)"));
+        }
+        if (importance < 0.0 || importance > 1.0) {
+            return Mono.just(Map.of("error", "importance must be between 0.0 and 1.0"));
+        }
 
         @SuppressWarnings("unchecked")
         List<String> tagList = body.get("tags") instanceof List<?> list

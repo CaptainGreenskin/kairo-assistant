@@ -103,7 +103,12 @@ public class ChatController {
                     restoreConsumer(prevConsumer);
                 })
                 .doOnError(e -> {
-                    sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + e.getMessage() + "\"}\n\n");
+                    String errMsg = e.getMessage() != null ? e.getMessage() : "unknown error";
+                    String escapedErr = errMsg.replace("\\", "\\\\")
+                            .replace("\"", "\\\"")
+                            .replace("\n", "\\n")
+                            .replace("\r", "\\r");
+                    sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + escapedErr + "\"}\n\n");
                     sink.tryEmitComplete();
                     restoreConsumer(prevConsumer);
                 })

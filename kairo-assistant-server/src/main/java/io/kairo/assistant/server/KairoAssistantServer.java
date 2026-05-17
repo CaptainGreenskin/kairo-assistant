@@ -47,8 +47,18 @@ public class KairoAssistantServer {
         return new SessionManager(session);
     }
 
-    private static final int MAX_RESTORE_MESSAGES = Integer.parseInt(
-            System.getenv().getOrDefault("KAIRO_MAX_RESTORE_MESSAGES", "50"));
+    private static final int MAX_RESTORE_MESSAGES = safeParseInt(
+            System.getenv().getOrDefault("KAIRO_MAX_RESTORE_MESSAGES", "50"), 50);
+
+    private static int safeParseInt(String value, int defaultValue) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            LoggerFactory.getLogger(KairoAssistantServer.class)
+                    .warn("Invalid integer '{}' for KAIRO_MAX_RESTORE_MESSAGES, using default {}", value, defaultValue);
+            return defaultValue;
+        }
+    }
 
     private void restoreConversationHistory(AssistantSession session) {
         if (!(session.agent() instanceof DefaultReActAgent agent)) return;

@@ -91,6 +91,37 @@ class MemoryControllerTest {
     }
 
     @Test
+    void saveRejectsInvalidImportance() {
+        var result = controller.save(Map.of("content", "test", "importance", "not-a-number")).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).contains("invalid importance"));
+    }
+
+    @Test
+    void saveRejectsImportanceOutOfRange() {
+        var result = controller.save(Map.of("content", "test", "importance", "1.5")).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).contains("between 0.0 and 1.0"));
+    }
+
+    @Test
+    void saveRejectsNegativeImportance() {
+        var result = controller.save(Map.of("content", "test", "importance", "-0.1")).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).contains("between 0.0 and 1.0"));
+    }
+
+    @Test
+    void saveAcceptsValidImportance() {
+        var result = controller.save(Map.of("content", "test", "importance", "0.7")).block();
+        assertNotNull(result);
+        assertEquals("saved", result.get("status"));
+    }
+
+    @Test
     void deleteBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var broadcastController = new MemoryController(TestFixtures.defaultSession(), events::add);

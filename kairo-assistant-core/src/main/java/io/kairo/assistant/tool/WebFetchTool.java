@@ -25,7 +25,7 @@ import reactor.core.publisher.Mono;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class WebFetchTool implements SyncTool {
 
-    private static final int MAX_BODY_CHARS = 50_000;
+    private static final int MAX_BODY_CHARS = ToolLimits.MAX_OUTPUT_CHARS;
     private final HttpClient httpClient;
 
     public WebFetchTool() {

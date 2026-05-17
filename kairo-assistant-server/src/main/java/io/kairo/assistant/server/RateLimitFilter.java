@@ -1,5 +1,6 @@
 package io.kairo.assistant.server;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -10,16 +11,49 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RateLimitFilter implements Filter {
 
+    private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
     private static final int MAX_REQUESTS_PER_MINUTE = 60;
     private static final long WINDOW_MS = 60_000;
+    private static final long EVICTION_INTERVAL_MS = 300_000;
 
     private final ConcurrentHashMap<String, ConcurrentLinkedDeque<Long>> requestLog =
             new ConcurrentHashMap<>();
+    private final ScheduledExecutorService evictionScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "rate-limit-eviction");
+        t.setDaemon(true);
+        return t;
+    });
+
+    public RateLimitFilter() {
+        evictionScheduler.scheduleAtFixedRate(this::evictStaleEntries,
+                EVICTION_INTERVAL_MS, EVICTION_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    @PreDestroy
+    public void destroy() {
+        evictionScheduler.shutdownNow();
+    }
+
+    private void evictStaleEntries() {
+        long cutoff = System.currentTimeMillis() - WINDOW_MS;
+        requestLog.entrySet().removeIf(entry -> {
+            ConcurrentLinkedDeque<Long> deque = entry.getValue();
+            while (!deque.isEmpty() && deque.peekFirst() < cutoff) {
+                deque.pollFirst();
+            }
+            return deque.isEmpty();
+        });
+    }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)

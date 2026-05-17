@@ -17,12 +17,14 @@ public class CorsConfig {
             for (String origin : allowedOrigins.split(",")) {
                 config.addAllowedOrigin(origin.trim());
             }
+            config.setAllowCredentials(true);
         } else {
-            config.addAllowedOriginPattern("*");
+            config.addAllowedOrigin("http://localhost:8080");
+            config.addAllowedOrigin("http://127.0.0.1:8080");
+            config.setAllowCredentials(true);
         }
         config.addAllowedMethod("*");
         config.addAllowedHeader("*");
-        config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

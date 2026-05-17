@@ -93,13 +93,7 @@ public class HttpRequestTool implements SyncTool {
                     result.append(k).append(": ").append(String.join(", ", v)).append("\n"));
             result.append("\n");
 
-            String respBody = resp.body();
-            if (respBody.length() > 50_000) {
-                result.append(respBody, 0, 50_000);
-                result.append("\n... (truncated, total ").append(respBody.length()).append(" chars)");
-            } else {
-                result.append(respBody);
-            }
+            result.append(ToolLimits.truncate(resp.body()));
 
             return ToolResult.success("http_request", result.toString(),
                     Map.of("statusCode", resp.statusCode()));

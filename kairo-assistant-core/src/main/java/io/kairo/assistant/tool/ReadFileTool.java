@@ -7,6 +7,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Mono;
 public class ReadFileTool implements SyncTool {
 
     private static final int MAX_LINES = 2000;
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
 
     @Override
     public JsonSchema inputSchema() {
@@ -61,22 +63,47 @@ public class ReadFileTool implements SyncTool {
         if (args.get("limit") instanceof Number n) limit = Math.max(1, Math.min(MAX_LINES, n.intValue()));
 
         try {
-            List<String> allLines = Files.readAllLines(path, StandardCharsets.UTF_8);
-            int end = Math.min(offset + limit, allLines.size());
-            if (offset >= allLines.size()) {
-                return ToolResult.success("read_file",
-                        "File has " + allLines.size() + " lines, offset " + offset + " is past end.");
+            long fileSize = Files.size(path);
+            if (fileSize > MAX_FILE_SIZE) {
+                return ToolResult.error("read_file",
+                        "File too large (" + fileSize / (1024 * 1024) + "MB, max 10MB). Use offset/limit for partial reads.");
             }
 
             StringBuilder sb = new StringBuilder();
-            for (int i = offset; i < end; i++) {
-                sb.append(i + 1).append('\t').append(allLines.get(i)).append('\n');
+            int lineNum = 0;
+            int linesRead = 0;
+            boolean hasMore = false;
+
+            try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (lineNum >= offset && linesRead < limit) {
+                        sb.append(lineNum + 1).append('\t').append(line).append('\n');
+                        linesRead++;
+                    } else if (linesRead >= limit) {
+                        hasMore = true;
+                        break;
+                    }
+                    lineNum++;
+                }
+                if (!hasMore) {
+                    while (reader.readLine() != null) {
+                        lineNum++;
+                        hasMore = true;
+                    }
+                }
             }
-            if (end < allLines.size()) {
-                sb.append("... (").append(allLines.size() - end).append(" more lines)");
+
+            int totalLines = lineNum + (hasMore ? 1 : 0);
+            if (linesRead == 0 && offset > 0) {
+                return ToolResult.success("read_file",
+                        "File has " + totalLines + " lines, offset " + offset + " is past end.");
+            }
+            if (hasMore) {
+                sb.append("... (more lines available, total ~").append(totalLines).append(")");
             }
             return ToolResult.success("read_file", sb.toString(),
-                    Map.of("totalLines", allLines.size(), "readFrom", offset, "readTo", end));
+                    Map.of("linesRead", linesRead, "readFrom", offset, "readTo", offset + linesRead));
         } catch (IOException e) {
             return ToolResult.error("read_file", "Failed to read: " + e.getMessage());
         }

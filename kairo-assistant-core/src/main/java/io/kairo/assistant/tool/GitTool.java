@@ -78,9 +78,7 @@ public class GitTool implements SyncTool {
                 return ToolResult.error("git", "Command timed out");
             }
 
-            if (output.length() > 50_000) {
-                output = output.substring(0, 50_000) + "\n... (truncated)";
-            }
+            output = ToolLimits.truncate(output);
 
             if (output.isBlank()) {
                 output = "(no output)";
