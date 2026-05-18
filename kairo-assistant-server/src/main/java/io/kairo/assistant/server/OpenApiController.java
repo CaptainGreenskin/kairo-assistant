@@ -81,7 +81,32 @@ public class OpenApiController {
                         "content", jsonContent("ToolDetail"))))));
 
         paths.put("/api/skills", Map.of("get", endpoint(
-                "List Skills", "Returns all available skills", "SkillList")));
+                "List Skills", "Returns all registered skills with metadata and trigger conditions", "SkillList")));
+
+        paths.put("/api/skills/{name}", Map.of("get", Map.of(
+                "summary", "Skill Detail",
+                "description", "Returns full detail of a skill including instructions and triggers",
+                "tags", List.of("capabilities"),
+                "parameters", List.of(Map.of(
+                        "name", "name", "in", "path", "required", true,
+                        "schema", Map.of("type", "string"))),
+                "responses", Map.of("200", Map.of(
+                        "description", "Skill detail",
+                        "content", jsonContent("SkillDetail"))))));
+
+        paths.put("/api/skills/categories", Map.of("get", endpoint(
+                "Skill Categories", "Returns skill counts per category", "SkillCategories")));
+
+        paths.put("/api/skills/categories/{category}", Map.of("get", Map.of(
+                "summary", "Skills by Category",
+                "description", "Returns skills filtered by category",
+                "tags", List.of("capabilities"),
+                "parameters", List.of(Map.of(
+                        "name", "category", "in", "path", "required", true,
+                        "schema", Map.of("type", "string"))),
+                "responses", Map.of("200", Map.of(
+                        "description", "Skills in category",
+                        "content", jsonContent("SkillList"))))));
 
         paths.put("/api/plugins", Map.of("get", endpoint(
                 "List Plugins", "Returns all loaded plugins", "PluginList")));
@@ -489,13 +514,22 @@ public class OpenApiController {
                 "inputSchema", prop("object", "JSON Schema of tool input parameters"),
                 "error", prop("string", "Error message if tool not found"))));
 
-        schemas.put("SkillList", Map.of(
-                "type", "array",
-                "items", objectSchema(Map.of(
-                        "name", prop("string", "Skill name"),
-                        "version", prop("string", "Skill version"),
-                        "description", prop("string", "Skill description"),
-                        "category", prop("string", "Skill category")))));
+        schemas.put("SkillList", objectSchema(Map.of(
+                "total", prop("integer", "Total skills"),
+                "skills", prop("array", "List of skill summaries with name, version, description, category, triggers"))));
+
+        schemas.put("SkillDetail", objectSchema(Map.of(
+                "name", prop("string", "Skill name"),
+                "version", prop("string", "Skill version"),
+                "description", prop("string", "Skill description"),
+                "category", prop("string", "Skill category"),
+                "triggers", prop("array", "Trigger conditions for activation"),
+                "hasInstructions", prop("boolean", "Whether instructions are loaded"),
+                "instructions", prop("string", "Full instructions (if loaded)"),
+                "isConditional", prop("boolean", "Whether conditional activation rules exist"))));
+
+        schemas.put("SkillCategories", objectSchema(Map.of(
+                "categories", prop("object", "Map of category name to skill count"))));
 
         schemas.put("SessionList", Map.of(
                 "type", "array",
