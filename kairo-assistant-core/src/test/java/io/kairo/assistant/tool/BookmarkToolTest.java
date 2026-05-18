@@ -58,4 +58,63 @@ class BookmarkToolTest {
         ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void actionRequired() {
+        ToolResult r = tool.execute(Map.of("url", "https://test.com"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "archive"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void searchRequiresQuery() {
+        ToolResult r = tool.execute(Map.of("action", "search"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void deleteRequiresId() {
+        ToolResult r = tool.execute(Map.of("action", "delete"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void emptyListMessage() {
+        ToolResult r = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(r.content()).contains("No bookmarks");
+    }
+
+    @Test
+    void saveWithTags() {
+        ToolResult r = tool.execute(
+                Map.of("action", "save", "url", "https://react.dev", "title", "React", "tags", "frontend,docs"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("React");
+    }
+
+    @Test
+    void saveWithoutTitleUsesUrl() {
+        ToolResult r = tool.execute(
+                Map.of("action", "save", "url", "https://example.com"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("example.com");
+    }
+
+    @Test
+    void searchNoResults() {
+        ToolResult r = tool.execute(Map.of("action", "search", "query", "nonexistent_xyz"), ctx).block();
+        assertThat(r.content()).contains("No bookmarks match");
+    }
+
+    @Test
+    void blankUrlErrors() {
+        ToolResult r = tool.execute(Map.of("action", "save", "url", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
 }

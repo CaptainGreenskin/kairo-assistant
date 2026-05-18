@@ -62,6 +62,43 @@ class NoteToolTest {
         assertThat(r.isError()).isTrue();
     }
 
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "archive"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void searchRequiresQuery() {
+        ToolResult r = tool.execute(Map.of("action", "search"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void deleteRequiresId() {
+        ToolResult r = tool.execute(Map.of("action", "delete"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void emptyListMessage() {
+        ToolResult r = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(r.content()).contains("No notes");
+    }
+
+    @Test
+    void searchNoResults() {
+        ToolResult r = tool.execute(Map.of("action", "search", "query", "nonexistent_xyz"), ctx).block();
+        assertThat(r.content()).contains("No notes found");
+    }
+
+    @Test
+    void blankContentErrors() {
+        ToolResult r = tool.execute(Map.of("action", "save", "content", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
     private String extractId(String content) {
         int start = content.indexOf('[') + 1;
         int end = content.indexOf(']');
