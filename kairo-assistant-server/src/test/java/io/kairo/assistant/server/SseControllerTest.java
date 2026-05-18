@@ -47,21 +47,21 @@ class SseControllerTest {
 
     @Test
     void sendRejectsBlankMessage() {
-        SseController controller = new SseController(null);
+        SseController controller = new SseController(null, new StreamingDeltaRouter());
         Map<String, Object> result = controller.send("test", Map.of("message", ""));
         assertEquals("message is required", result.get("error"));
     }
 
     @Test
     void sendRejectsMissingMessage() {
-        SseController controller = new SseController(null);
+        SseController controller = new SseController(null, new StreamingDeltaRouter());
         Map<String, Object> result = controller.send("test", Map.of());
         assertEquals("message is required", result.get("error"));
     }
 
     @Test
     void sendRejectsUnconnectedClient() {
-        SseController controller = new SseController(null);
+        SseController controller = new SseController(null, new StreamingDeltaRouter());
         Map<String, Object> result = controller.send("nobody", Map.of("message", "hello"));
         assertNotNull(result.get("error"));
         assertTrue(result.get("error").toString().contains("Not connected"));
@@ -69,14 +69,14 @@ class SseControllerTest {
 
     @Test
     void connectReturnsFlux() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         var flux = controller.connect("test-client");
         assertNotNull(flux);
     }
 
     @Test
     void connectEmitsConnectedEvent() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         var events = controller.connect("test-client").take(1).collectList().block();
         assertNotNull(events);
         assertFalse(events.isEmpty());
@@ -86,7 +86,7 @@ class SseControllerTest {
 
     @Test
     void interruptReturnsStatus() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         var result = controller.interrupt("test");
         assertEquals("interrupted", result.get("status"));
     }
@@ -94,14 +94,14 @@ class SseControllerTest {
     @Test
     void sendToUnsubscribedClientReturnsError() {
         var session = TestFixtures.defaultSession();
-        SseController controller = new SseController(session);
+        SseController controller = new SseController(session, new StreamingDeltaRouter());
         var result = controller.send("not-connected", Map.of("message", "hello"));
         assertTrue(result.get("error").toString().contains("Not connected"));
     }
 
     @Test
     void disconnectRemovesClient() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         Disposable sub = controller.connect("dc-client").subscribe();
         var result = controller.disconnect("dc-client");
         assertEquals("disconnected", result.get("status"));
@@ -111,14 +111,14 @@ class SseControllerTest {
 
     @Test
     void disconnectNotConnectedReturnsStatus() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         var result = controller.disconnect("nobody");
         assertEquals("not_connected", result.get("status"));
     }
 
     @Test
     void listConnectionsEmpty() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         var result = controller.listConnections();
         assertEquals(0, result.get("count"));
     }
@@ -126,7 +126,7 @@ class SseControllerTest {
     @Test
     @SuppressWarnings("unchecked")
     void listConnectionsShowsClients() {
-        SseController controller = new SseController(TestFixtures.defaultSession());
+        SseController controller = new SseController(TestFixtures.defaultSession(), new StreamingDeltaRouter());
         Disposable sub1 = controller.connect("c1").subscribe();
         Disposable sub2 = controller.connect("c2").subscribe();
         var result = controller.listConnections();
@@ -139,6 +139,6 @@ class SseControllerTest {
     }
 
     private SseController createController() {
-        return new SseController(null);
+        return new SseController(null, new StreamingDeltaRouter());
     }
 }

@@ -56,7 +56,7 @@ class ChatControllerTest {
                 config);
 
         var sessionManager = new SessionManager(session);
-        controller = new ChatController(session, sessionManager, null);
+        controller = new ChatController(session, sessionManager, new StreamingDeltaRouter());
     }
 
     @Test
@@ -156,7 +156,7 @@ class ChatControllerTest {
                 AssistantSkills.createRegistry(),
                 new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), null);
+        var errorController = new ChatController(session, new SessionManager(session), new StreamingDeltaRouter());
 
         var result = errorController.chat(new ChatController.ChatRequest("hello"), null).block();
         assertNotNull(result);
@@ -183,7 +183,7 @@ class ChatControllerTest {
                 AssistantSkills.createRegistry(),
                 new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), null);
+        var errorController = new ChatController(session, new SessionManager(session), new StreamingDeltaRouter());
 
         var events = errorController.chatStream(new ChatController.ChatRequest("hello"))
                 .collectList().block();

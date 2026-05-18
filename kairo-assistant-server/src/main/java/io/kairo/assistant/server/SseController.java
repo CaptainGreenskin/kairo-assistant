@@ -3,7 +3,6 @@ package io.kairo.assistant.server;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.core.agent.DefaultReActAgent;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.MediaType;
@@ -21,10 +20,12 @@ import reactor.core.publisher.Sinks;
 public class SseController {
 
     private final AssistantSession session;
+    private final StreamingDeltaRouter deltaRouter;
     private final ConcurrentHashMap<String, Sinks.Many<String>> connections = new ConcurrentHashMap<>();
 
-    public SseController(AssistantSession session) {
+    public SseController(AssistantSession session, StreamingDeltaRouter deltaRouter) {
         this.session = session;
+        this.deltaRouter = deltaRouter;
     }
 
     @GetMapping(value = "/connect", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -55,29 +56,24 @@ public class SseController {
 
         sink.tryEmitNext(sseEvent("thinking", Map.of()));
 
-        if (session.agent() instanceof DefaultReActAgent agent) {
-            agent.setTextDeltaConsumer(delta -> {
-                String escaped = JsonEscape.escape(delta);
-                sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
-            });
-        }
+        String subId = "sse-" + clientId;
+        deltaRouter.subscribe(subId, delta -> {
+            String escaped = JsonEscape.escape(delta);
+            sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
+        });
 
         Msg input = Msg.of(MsgRole.USER, message);
         session.agent().call(input)
                 .doOnSuccess(response -> {
+                    deltaRouter.unsubscribe(subId);
                     if (response != null) {
                         sink.tryEmitNext(sseEvent("response", Map.of("content", JsonEscape.escape(response.text()))));
                     }
                     sink.tryEmitNext(sseEvent("done", Map.of()));
-                    if (session.agent() instanceof DefaultReActAgent agent) {
-                        agent.setTextDeltaConsumer(null);
-                    }
                 })
                 .doOnError(e -> {
+                    deltaRouter.unsubscribe(subId);
                     sink.tryEmitNext(sseEvent("error", Map.of("message", JsonEscape.escape(e.getMessage()))));
-                    if (session.agent() instanceof DefaultReActAgent agent) {
-                        agent.setTextDeltaConsumer(null);
-                    }
                 })
                 .subscribe();
 
