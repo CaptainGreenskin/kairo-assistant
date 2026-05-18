@@ -84,6 +84,24 @@ public class SseController {
         return Map.of("status", "processing");
     }
 
+    @PostMapping("/disconnect")
+    public Map<String, String> disconnect(@RequestParam(defaultValue = "default") String clientId) {
+        Sinks.Many<String> sink = connections.remove(clientId);
+        if (sink != null) {
+            sink.tryEmitNext(sseEvent("disconnected", Map.of()));
+            sink.tryEmitComplete();
+            return Map.of("status", "disconnected", "clientId", clientId);
+        }
+        return Map.of("status", "not_connected", "clientId", clientId);
+    }
+
+    @GetMapping("/connections")
+    public Map<String, Object> listConnections() {
+        return Map.of(
+                "count", connections.size(),
+                "clientIds", connections.keySet().stream().sorted().toList());
+    }
+
     @PostMapping("/interrupt")
     public Map<String, String> interrupt(@RequestParam(defaultValue = "default") String clientId) {
         session.agent().interrupt();

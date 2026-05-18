@@ -1,6 +1,7 @@
 package io.kairo.assistant.server;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.Disposable;
 import java.lang.reflect.Method;
 import java.util.Map;
 
@@ -96,6 +97,45 @@ class SseControllerTest {
         SseController controller = new SseController(session);
         var result = controller.send("not-connected", Map.of("message", "hello"));
         assertTrue(result.get("error").toString().contains("Not connected"));
+    }
+
+    @Test
+    void disconnectRemovesClient() {
+        SseController controller = new SseController(TestFixtures.defaultSession());
+        Disposable sub = controller.connect("dc-client").subscribe();
+        var result = controller.disconnect("dc-client");
+        assertEquals("disconnected", result.get("status"));
+        assertEquals("dc-client", result.get("clientId"));
+        sub.dispose();
+    }
+
+    @Test
+    void disconnectNotConnectedReturnsStatus() {
+        SseController controller = new SseController(TestFixtures.defaultSession());
+        var result = controller.disconnect("nobody");
+        assertEquals("not_connected", result.get("status"));
+    }
+
+    @Test
+    void listConnectionsEmpty() {
+        SseController controller = new SseController(TestFixtures.defaultSession());
+        var result = controller.listConnections();
+        assertEquals(0, result.get("count"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listConnectionsShowsClients() {
+        SseController controller = new SseController(TestFixtures.defaultSession());
+        Disposable sub1 = controller.connect("c1").subscribe();
+        Disposable sub2 = controller.connect("c2").subscribe();
+        var result = controller.listConnections();
+        assertEquals(2, result.get("count"));
+        var ids = (java.util.List<String>) result.get("clientIds");
+        assertTrue(ids.contains("c1"));
+        assertTrue(ids.contains("c2"));
+        sub1.dispose();
+        sub2.dispose();
     }
 
     private SseController createController() {

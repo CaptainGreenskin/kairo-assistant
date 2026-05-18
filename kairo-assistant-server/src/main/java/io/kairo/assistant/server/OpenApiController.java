@@ -300,6 +300,20 @@ public class OpenApiController {
                         "content", Map.of("text/event-stream", Map.of(
                                 "schema", Map.of("type", "string"))))))));
 
+        paths.put("/api/sse/disconnect", Map.of("post", Map.of(
+                "summary", "SSE Disconnect",
+                "description", "Disconnect an SSE client by ID",
+                "tags", List.of("sse"),
+                "parameters", List.of(Map.of(
+                        "name", "clientId", "in", "query", "required", false,
+                        "schema", Map.of("type", "string"))),
+                "responses", Map.of("200", Map.of(
+                        "description", "Disconnect result",
+                        "content", jsonContent("InterruptResponse"))))));
+
+        paths.put("/api/sse/connections", Map.of("get", endpoint(
+                "SSE Connections", "List active SSE connections", "SseConnections")));
+
         paths.put("/api/sse/send", Map.of("post", Map.of(
                 "summary", "SSE Send Message",
                 "description", "Send message through an active SSE connection",
@@ -551,6 +565,10 @@ public class OpenApiController {
 
         schemas.put("ContextClearResult", objectSchema(Map.of(
                 "status", prop("string", "Clear result (cleared or error)"))));
+
+        schemas.put("SseConnections", objectSchema(Map.of(
+                "count", prop("integer", "Number of active SSE connections"),
+                "clientIds", prop("array", "List of connected client IDs"))));
 
         schemas.put("ChannelAck", objectSchema(Map.of(
                 "success", prop("boolean", "Whether the message was processed"))));
