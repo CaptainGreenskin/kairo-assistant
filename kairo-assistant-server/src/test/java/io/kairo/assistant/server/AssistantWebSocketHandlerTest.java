@@ -76,7 +76,7 @@ class AssistantWebSocketHandlerTest {
 
         metrics = new MetricsCollector();
         var sessionManager = new SessionManager(session);
-        handler = new AssistantWebSocketHandler(session, sessionManager, metrics);
+        handler = new AssistantWebSocketHandler(session, sessionManager, metrics, new StreamingDeltaRouter());
     }
 
     @Test
@@ -278,7 +278,7 @@ class AssistantWebSocketHandlerTest {
                 AssistantSkills.createRegistry(),
                 new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
                 config);
-        var slowHandler = new AssistantWebSocketHandler(slowSession, new SessionManager(slowSession), new MetricsCollector());
+        var slowHandler = new AssistantWebSocketHandler(slowSession, new SessionManager(slowSession), new MetricsCollector(), new StreamingDeltaRouter());
 
         var ws = new StubWebSocketSession("ws-progress");
         slowHandler.afterConnectionEstablished(ws);

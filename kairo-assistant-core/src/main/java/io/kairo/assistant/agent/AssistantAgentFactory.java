@@ -127,7 +127,6 @@ public final class AssistantAgentFactory {
                         .tokenBudget(config.tokenBudget())
                         .memoryStore(memoryStore)
                         .streaming(true)
-                        .withSmartContinuation()
                         .build();
 
         return new AssistantSession(

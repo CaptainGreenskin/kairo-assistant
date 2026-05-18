@@ -50,11 +50,12 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         return t;
     });
 
-    public AssistantWebSocketHandler(AssistantSession session, SessionManager sessionManager, MetricsCollector metrics) {
+    public AssistantWebSocketHandler(AssistantSession session, SessionManager sessionManager,
+                                     MetricsCollector metrics, StreamingDeltaRouter deltaRouter) {
         this.session = session;
         this.sessionManager = sessionManager;
         this.metrics = metrics;
-        wireStreaming();
+        wireStreaming(deltaRouter);
         wireToolEvents();
         startPingSchedule();
     }
@@ -73,9 +74,10 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         }
     };
 
-    private void wireStreaming() {
+    private void wireStreaming(StreamingDeltaRouter deltaRouter) {
+        deltaRouter.subscribe("websocket", wsBroadcastConsumer);
         if (session.agent() instanceof DefaultReActAgent agent) {
-            agent.setTextDeltaConsumer(wsBroadcastConsumer);
+            agent.setTextDeltaConsumer(deltaRouter.compositeConsumer());
         }
     }
 

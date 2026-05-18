@@ -23,7 +23,7 @@ public record AssistantConfig(
         private String modelName = "claude-sonnet-4-6";
         private String apiKey;
         private String apiBaseUrl;
-        private int maxIterations = 30;
+        private int maxIterations = 10;
         private Duration timeout = Duration.ofMinutes(10);
         private int tokenBudget = 128_000;
         private String dataDir = System.getProperty("user.home") + "/.kairo-assistant";
@@ -94,6 +94,10 @@ public record AssistantConfig(
         }
 
         private String resolveApiKey(String provider) {
+            String universal = System.getenv("KAIRO_API_KEY");
+            if (universal != null && !universal.isBlank()) {
+                return universal;
+            }
             return switch (provider) {
                 case "anthropic" -> System.getenv("ANTHROPIC_API_KEY");
                 case "openai" -> System.getenv("OPENAI_API_KEY");

@@ -16,17 +16,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-/**
- * Starts a DingTalk Stream Mode connection on application startup if DINGTALK_CLIENT_ID and
- * DINGTALK_CLIENT_SECRET environment variables are set.
- *
- * <p>Stream Mode establishes a WebSocket from the client side — no public IP needed.
- */
 @Component
 public class DingTalkStreamRunner implements CommandLineRunner {
 
@@ -37,6 +33,7 @@ public class DingTalkStreamRunner implements CommandLineRunner {
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+    private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
     public DingTalkStreamRunner(AssistantSession session) {
         this.session = session;
@@ -58,7 +55,8 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                     .registerCallbackListener(ROBOT_MSG_TOPIC, new RobotMessageListener())
                     .build();
             client.start();
-            log.info("DingTalk Stream Mode connected (clientId={}...)", clientId.substring(0, Math.min(8, clientId.length())));
+            log.info("DingTalk Stream Mode connected (clientId={}...)",
+                    clientId.substring(0, Math.min(8, clientId.length())));
         } catch (Exception e) {
             log.error("Failed to start DingTalk Stream Mode: {}", e.getMessage(), e);
         }
@@ -83,8 +81,7 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                 log.info("DingTalk inbound from [{}] in [{}]: {}", senderNick, conversationId,
                         text.length() > 100 ? text.substring(0, 100) + "..." : text);
 
-                // Process asynchronously so we ACK the stream immediately
-                processAsync(text, sessionWebhook, senderNick);
+                processAsync(text, sessionWebhook, senderNick, conversationId);
 
             } catch (Exception e) {
                 log.error("Error handling DingTalk stream message", e);
@@ -93,40 +90,88 @@ public class DingTalkStreamRunner implements CommandLineRunner {
         }
     }
 
-    private void processAsync(String text, String sessionWebhook, String senderNick) {
+    private void processAsync(String text, String sessionWebhook, String senderNick,
+                              String conversationId) {
+        cancelInProgress(conversationId);
+
+        if (sessionWebhook != null) {
+            sendTextReply(sessionWebhook, "正在思考...");
+        }
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        inProgressTasks.put(conversationId, () -> {
+            cancelled.set(true);
+            session.agent().interrupt();
+        });
+
         Thread t = new Thread(() -> {
             try {
                 Agent agent = session.agent();
                 var response = agent.call(Msg.of(MsgRole.USER, text)).block(Duration.ofMinutes(5));
 
-                if (response != null && sessionWebhook != null) {
+                if (!cancelled.get() && response != null && sessionWebhook != null) {
                     String reply = response.text();
                     reply = reply.replaceAll("<think>[\\s\\S]*?</think>\\s*", "");
-                    sendReply(sessionWebhook, reply);
+                    if (reply.isBlank()) {
+                        reply = "(No response)";
+                    }
+                    sendMarkdownReply(sessionWebhook, reply);
                     log.info("DingTalk reply sent to [{}]: {}",
                             senderNick, reply.length() > 80 ? reply.substring(0, 80) + "..." : reply);
                 }
             } catch (Exception e) {
-                log.error("Error processing DingTalk message", e);
-                if (sessionWebhook != null) {
-                    sendReply(sessionWebhook, "Sorry, I encountered an error: " + e.getMessage());
+                if (!cancelled.get()) {
+                    log.error("Error processing DingTalk message", e);
+                    if (sessionWebhook != null) {
+                        sendTextReply(sessionWebhook, "Error: " + e.getMessage());
+                    }
                 }
+            } finally {
+                inProgressTasks.remove(conversationId);
             }
         });
         t.setDaemon(true);
-        t.setName("dingtalk-agent");
+        t.setName("dingtalk-agent-" + Math.abs(conversationId.hashCode() % 1000));
         t.start();
     }
 
-    private void sendReply(String sessionWebhook, String content) {
+    private void cancelInProgress(String conversationId) {
+        Runnable cancel = inProgressTasks.remove(conversationId);
+        if (cancel != null) {
+            log.info("Interrupting in-progress DingTalk task for conversation [{}]", conversationId);
+            cancel.run();
+        }
+    }
+
+    private void sendTextReply(String sessionWebhook, String content) {
         try {
             ObjectNode body = mapper.createObjectNode();
             body.put("msgtype", "text");
             ObjectNode text = body.putObject("text");
             text.put("content", content);
+            doPost(sessionWebhook, body);
+        } catch (Exception e) {
+            log.error("Failed to send DingTalk text reply", e);
+        }
+    }
 
+    private void sendMarkdownReply(String sessionWebhook, String content) {
+        try {
+            ObjectNode body = mapper.createObjectNode();
+            body.put("msgtype", "markdown");
+            ObjectNode md = body.putObject("markdown");
+            md.put("title", "Reply");
+            md.put("text", content);
+            doPost(sessionWebhook, body);
+        } catch (Exception e) {
+            log.error("Failed to send DingTalk markdown reply", e);
+        }
+    }
+
+    private void doPost(String url, ObjectNode body) {
+        try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(sessionWebhook))
+                    .uri(URI.create(url))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
                     .timeout(Duration.ofSeconds(10))
@@ -137,7 +182,7 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                 log.warn("DingTalk reply failed: HTTP {} — {}", resp.statusCode(), resp.body());
             }
         } catch (Exception e) {
-            log.error("Failed to send DingTalk reply", e);
+            log.error("DingTalk HTTP POST failed", e);
         }
     }
 
