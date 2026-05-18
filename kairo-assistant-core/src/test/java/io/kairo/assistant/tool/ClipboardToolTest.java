@@ -22,6 +22,7 @@ class ClipboardToolTest {
     void writeRequiresContent() {
         ToolResult r = tool.execute(Map.of("action", "write"), ctx).block();
         assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("content");
     }
 
     @Test
@@ -53,5 +54,35 @@ class ClipboardToolTest {
     void writeReportsCharCount() {
         ToolResult r = tool.execute(Map.of("action", "write", "content", "12345"), ctx).block();
         assertThat(r.content()).contains("5 chars");
+    }
+
+    @Test
+    void caseInsensitiveAction() {
+        ToolResult r = tool.execute(Map.of("action", "READ"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void schemaHasActionAndContent() {
+        var schema = tool.inputSchema();
+        assertThat(schema.properties()).containsKey("action");
+        assertThat(schema.properties()).containsKey("content");
+        assertThat(schema.required()).containsExactly("action");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var annotation = ClipboardTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.name()).isEqualTo("clipboard");
+        assertThat(annotation.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
+    }
+
+    @Test
+    void writeEmptyStringSucceeds() {
+        ToolResult r = tool.execute(Map.of("action", "write", "content", ""), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("0 chars");
     }
 }

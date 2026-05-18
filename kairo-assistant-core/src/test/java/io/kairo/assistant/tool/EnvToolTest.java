@@ -15,7 +15,7 @@ class EnvToolTest {
     @Test
     void getExistingVar() {
         ToolResult result = tool.execute(Map.of("action", "get", "name", "PATH"), ctx).block();
-        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("PATH=");
     }
 
@@ -23,22 +23,80 @@ class EnvToolTest {
     void getUnsetVar() {
         ToolResult result = tool.execute(
                 Map.of("action", "get", "name", "UNLIKELY_ENV_VAR_12345"), ctx).block();
-        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("not set");
+    }
+
+    @Test
+    void getRequiresName() {
+        ToolResult result = tool.execute(Map.of("action", "get"), ctx).block();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("name");
     }
 
     @Test
     void listWithFilter() {
         ToolResult result = tool.execute(
                 Map.of("action", "list", "filter", "PATH"), ctx).block();
-        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("PATH");
+    }
+
+    @Test
+    void listNoFilter() {
+        ToolResult result = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("variables");
+    }
+
+    @Test
+    void defaultActionIsList() {
+        ToolResult result = tool.execute(Map.of(), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("variables");
+    }
+
+    @Test
+    void searchAction() {
+        ToolResult result = tool.execute(Map.of("action", "search", "filter", "HOME"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("HOME");
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult result = tool.execute(Map.of("action", "set"), ctx).block();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("Unknown action");
     }
 
     @Test
     void sensitiveVarsMasked() {
         ToolResult result = tool.execute(Map.of("action", "list", "filter", "KEY"), ctx).block();
         assertThat(result).isNotNull();
-        // Any KEY vars should be masked if present
+    }
+
+    @Test
+    void schemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.properties()).containsKey("action");
+        assertThat(schema.properties()).containsKey("name");
+        assertThat(schema.properties()).containsKey("filter");
+        assertThat(schema.required()).isEmpty();
+    }
+
+    @Test
+    void filterCaseInsensitive() {
+        ToolResult result = tool.execute(Map.of("action", "list", "filter", "path"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("PATH");
+    }
+
+    @Test
+    void noMatchingVars() {
+        ToolResult result = tool.execute(
+                Map.of("action", "list", "filter", "ZZZZZ_NONEXISTENT_FILTER_ZZZZZ"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("No variables");
     }
 }
