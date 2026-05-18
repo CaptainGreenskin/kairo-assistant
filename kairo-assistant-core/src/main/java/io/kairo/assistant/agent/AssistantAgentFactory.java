@@ -84,6 +84,10 @@ public final class AssistantAgentFactory {
 
         DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
         toolRegistry.scan("io.kairo.assistant.tool");
+        if (toolRegistry.getAll().isEmpty()) {
+            log.info("Classpath scan found 0 tools, falling back to explicit registration");
+            registerAllTools(toolRegistry);
+        }
 
         DefaultToolExecutor toolExecutor =
                 new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
@@ -171,5 +175,30 @@ public final class AssistantAgentFactory {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create ModelProvider: " + provider, e);
         }
+    }
+
+    private static void registerAllTools(DefaultToolRegistry registry) {
+        String[] toolClasses = {
+            "BookmarkTool", "BrowserTool", "CalculatorTool", "CalendarTool",
+            "CheckpointTool", "ClarifyTool", "ClipboardTool", "CodeExecuteTool",
+            "ContactsTool", "CronTool", "DelegateTaskTool", "EncodeTool",
+            "EnvTool", "GitTool", "HttpRequestTool", "ImageGenTool",
+            "JsonTool", "ListDirectoryTool", "McpClientTool", "MemorySearchTool",
+            "NoteTool", "PatchTool", "ProcessTool", "ProjectTool",
+            "ReadFileTool", "ReminderTool", "ScreenshotTool", "SearchFilesTool",
+            "SendMessageTool", "SessionSearchTool", "ShellTool", "SystemInfoTool",
+            "TextTool", "TimeTool", "TodoTool", "UserProfileTool",
+            "VisionTool", "VoiceTool", "WeatherTool", "WebFetchTool",
+            "WorkflowTool", "WriteFileTool"
+        };
+        for (String name : toolClasses) {
+            try {
+                Class<?> clazz = Class.forName("io.kairo.assistant.tool." + name);
+                registry.registerTool(clazz);
+            } catch (Exception e) {
+                log.warn("Failed to register tool {}: {}", name, e.getMessage());
+            }
+        }
+        log.info("Explicitly registered {} tool(s)", registry.getAll().size());
     }
 }
