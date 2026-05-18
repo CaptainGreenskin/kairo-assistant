@@ -348,6 +348,67 @@ public class OpenApiController {
                                 "description", "Clear result",
                                 "content", jsonContent("ContextClearResult"))))));
 
+        Map<String, Object> convSessionIdParam = Map.of(
+                "name", "sessionId", "in", "path", "required", true,
+                "schema", Map.of("type", "string"),
+                "description", "Conversation session ID");
+
+        paths.put("/api/conversations", Map.of("get", endpoint(
+                "List Conversations", "Returns all saved conversations with previews and titles", "ConversationList")));
+
+        paths.put("/api/conversations/search", Map.of("get", Map.of(
+                "summary", "Search Conversations",
+                "description", "Searches across all conversation messages for matching text",
+                "tags", List.of("conversations"),
+                "parameters", List.of(Map.of(
+                        "name", "q", "in", "query", "required", true,
+                        "schema", Map.of("type", "string"),
+                        "description", "Search query")),
+                "responses", Map.of("200", Map.of(
+                        "description", "Search results",
+                        "content", jsonContent("ConversationSearchResult"))))));
+
+        paths.put("/api/conversations/{sessionId}", Map.of(
+                "get", Map.of(
+                        "summary", "Get Conversation",
+                        "description", "Returns full message history with title and count",
+                        "tags", List.of("conversations"),
+                        "parameters", List.of(convSessionIdParam),
+                        "responses", Map.of("200", Map.of(
+                                "description", "Conversation detail",
+                                "content", jsonContent("ConversationDetail")))),
+                "delete", Map.of(
+                        "summary", "Delete Conversation",
+                        "description", "Permanently deletes a conversation",
+                        "tags", List.of("conversations"),
+                        "parameters", List.of(convSessionIdParam),
+                        "responses", Map.of("200", Map.of(
+                                "description", "Deletion result",
+                                "content", jsonContent("DeleteResult"))))));
+
+        paths.put("/api/conversations/{sessionId}/export", Map.of("get", Map.of(
+                "summary", "Export Conversation",
+                "description", "Exports a conversation as markdown or JSON",
+                "tags", List.of("conversations"),
+                "parameters", List.of(convSessionIdParam, Map.of(
+                        "name", "format", "in", "query", "required", false,
+                        "schema", Map.of("type", "string", "default", "markdown"))),
+                "responses", Map.of("200", Map.of(
+                        "description", "Exported content",
+                        "content", Map.of("text/plain", Map.of(
+                                "schema", Map.of("type", "string"))))))));
+
+        paths.put("/api/conversations/{sessionId}/title", Map.of("put", Map.of(
+                "summary", "Set Conversation Title",
+                "description", "Sets or updates a conversation title",
+                "tags", List.of("conversations"),
+                "parameters", List.of(convSessionIdParam),
+                "requestBody", Map.of("required", true,
+                        "content", jsonContent("RenameRequest")),
+                "responses", Map.of("200", Map.of(
+                        "description", "Update result",
+                        "content", jsonContent("RenameResult"))))));
+
         paths.put("/api/openapi.json", Map.of("get", endpoint(
                 "OpenAPI Spec", "Returns this OpenAPI specification", "object")));
 
@@ -569,6 +630,21 @@ public class OpenApiController {
         schemas.put("SseConnections", objectSchema(Map.of(
                 "count", prop("integer", "Number of active SSE connections"),
                 "clientIds", prop("array", "List of connected client IDs"))));
+
+        schemas.put("ConversationList", objectSchema(Map.of(
+                "total", prop("integer", "Total conversations"),
+                "conversations", prop("array", "List of conversation summaries with id, preview, title, lastModified"))));
+
+        schemas.put("ConversationDetail", objectSchema(Map.of(
+                "sessionId", prop("string", "Conversation session ID"),
+                "title", prop("string", "Conversation title (if set)"),
+                "messageCount", prop("integer", "Number of messages"),
+                "messages", prop("array", "List of messages with role, content, and timestamp"))));
+
+        schemas.put("ConversationSearchResult", objectSchema(Map.of(
+                "query", prop("string", "Search query"),
+                "total", prop("integer", "Total matching messages"),
+                "results", prop("array", "Matching messages with sessionId, role, content, timestamp"))));
 
         schemas.put("ChannelAck", objectSchema(Map.of(
                 "success", prop("boolean", "Whether the message was processed"))));
