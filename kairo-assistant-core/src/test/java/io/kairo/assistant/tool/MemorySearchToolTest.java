@@ -53,4 +53,61 @@ class MemorySearchToolTest {
         ToolResult r = tool.execute(Map.of(), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void invalidScopeErrors() {
+        ToolResult r = tool.execute(Map.of("keyword", "test", "scope", "invalid_scope"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Invalid scope");
+    }
+
+    @Test
+    void searchWithTags() {
+        store.save(new MemoryEntry("t1", null, "tagged entry", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of("alpha", "beta"), Instant.now(), null)).block();
+        store.save(new MemoryEntry("t2", null, "untagged entry", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+
+        ToolResult r = tool.execute(Map.of("keyword", "entry", "scope", "global", "tags", "alpha"), ctx).block();
+        assertThat(r.content()).contains("tagged entry");
+    }
+
+    @Test
+    void searchWithLimit() {
+        for (int i = 0; i < 5; i++) {
+            store.save(new MemoryEntry("lim" + i, null, "limited entry " + i, null,
+                    MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+        }
+
+        ToolResult r = tool.execute(
+                Map.of("keyword", "limited entry", "scope", "global", "limit", 2), ctx).block();
+        assertThat(r.content()).contains("Found 2 memories");
+    }
+
+    @Test
+    void searchWithoutScope() {
+        store.save(new MemoryEntry("ns1", null, "no scope search test", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+
+        ToolResult r = tool.execute(Map.of("keyword", "no scope search"), ctx).block();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void resultShowsImportance() {
+        store.save(new MemoryEntry("imp1", null, "importance display test", null,
+                MemoryScope.GLOBAL, 0.8, null, Set.of(), Instant.now(), null)).block();
+
+        ToolResult r = tool.execute(Map.of("keyword", "importance display", "scope", "global"), ctx).block();
+        assertThat(r.content()).contains("importance=0.8");
+    }
+
+    @Test
+    void resultShowsTags() {
+        store.save(new MemoryEntry("tag1", null, "tag display test", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of("myTag"), Instant.now(), null)).block();
+
+        ToolResult r = tool.execute(Map.of("keyword", "tag display", "scope", "global"), ctx).block();
+        assertThat(r.content()).contains("#myTag");
+    }
 }

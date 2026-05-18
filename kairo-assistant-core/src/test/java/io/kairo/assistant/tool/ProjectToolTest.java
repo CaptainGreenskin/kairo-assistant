@@ -64,4 +64,68 @@ class ProjectToolTest {
         ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void actionRequired() {
+        ToolResult r = tool.execute(Map.of(), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "destroy"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void addTaskRequiresProjectAndTask() {
+        ToolResult r = tool.execute(Map.of("action", "add_task"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void updateTaskRequiresAllFields() {
+        ToolResult r = tool.execute(Map.of("action", "update_task", "project", "P", "task", "T"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void updateNonexistentTaskErrors() {
+        ToolResult r = tool.execute(
+                Map.of("action", "update_task", "project", "X", "task", "Y", "task_status", "done"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("not found");
+    }
+
+    @Test
+    void statusRequiresProject() {
+        ToolResult r = tool.execute(Map.of("action", "status"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void statusShowsMultipleTasks() {
+        tool.execute(Map.of("action", "create", "project", "Multi"), ctx).block();
+        tool.execute(Map.of("action", "add_task", "project", "Multi", "task", "T1"), ctx).block();
+        tool.execute(Map.of("action", "add_task", "project", "Multi", "task", "T2"), ctx).block();
+        tool.execute(Map.of("action", "add_task", "project", "Multi", "task", "T3"), ctx).block();
+
+        ToolResult status = tool.execute(Map.of("action", "status", "project", "Multi"), ctx).block();
+        assertThat(status.content()).contains("Total: 3");
+    }
+
+    @Test
+    void addTaskWithPriority() {
+        tool.execute(Map.of("action", "create", "project", "Prio"), ctx).block();
+        ToolResult r = tool.execute(
+                Map.of("action", "add_task", "project", "Prio", "task", "Urgent", "priority", "high"), ctx).block();
+        assertThat(r.content()).contains("high");
+    }
+
+    @Test
+    void createProjectWithBlankNameErrors() {
+        ToolResult r = tool.execute(Map.of("action", "create", "project", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
 }
