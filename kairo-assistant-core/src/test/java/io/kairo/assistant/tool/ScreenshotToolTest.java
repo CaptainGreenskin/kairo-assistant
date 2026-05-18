@@ -26,6 +26,11 @@ class ScreenshotToolTest {
     }
 
     @Test
+    void schemaNoRequiredFields() {
+        assertThat(tool.inputSchema().required()).isEmpty();
+    }
+
+    @Test
     void defaultOutputPath() {
         ToolResult r = tool.execute(Map.of(), ctx).block();
         assertThat(r).isNotNull();
@@ -42,5 +47,30 @@ class ScreenshotToolTest {
         var annotation = ScreenshotTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
         assertThat(annotation).isNotNull();
         assertThat(annotation.name()).isEqualTo("screenshot");
+    }
+
+    @Test
+    void toolIsReadOnly() {
+        var annotation = ScreenshotTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(annotation.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
+
+    @Test
+    void toolCategoryGeneral() {
+        var annotation = ScreenshotTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(annotation.category()).isEqualTo(io.kairo.api.tool.ToolCategory.GENERAL);
+    }
+
+    @Test
+    void executeReturnsNonNullResult() {
+        ToolResult r = tool.execute(Map.of("output", "/tmp/kairo-test-screenshot.png"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.content()).isNotBlank();
+    }
+
+    @Test
+    void regionParameterAccepted() {
+        ToolResult r = tool.execute(Map.of("region", "full"), ctx).block();
+        assertThat(r).isNotNull();
     }
 }
