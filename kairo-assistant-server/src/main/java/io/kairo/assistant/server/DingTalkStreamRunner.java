@@ -71,17 +71,33 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                 String text = extractText(request);
                 String sessionWebhook = request.path("sessionWebhook").asText(null);
                 String senderNick = request.path("senderNick").asText("user");
+                String senderId = request.path("senderId").asText("unknown");
                 String conversationId = request.path("conversationId").asText("unknown");
+                String conversationType = request.path("conversationType").asText("1");
+                boolean isGroup = "2".equals(conversationType);
 
                 if (text == null || text.isBlank()) {
                     log.debug("Ignoring empty DingTalk message");
                     return "{}";
                 }
 
-                log.info("DingTalk inbound from [{}] in [{}]: {}", senderNick, conversationId,
+                if (isGroup && !isBotMentioned(request)) {
+                    log.debug("Ignoring group message without @mention from [{}]", senderNick);
+                    return "{}";
+                }
+
+                if (isGroup) {
+                    text = stripAtBotPrefix(text);
+                }
+
+                log.info("DingTalk inbound from [{}] in [{}]({}): {}", senderNick, conversationId,
+                        isGroup ? "group" : "dm",
                         text.length() > 100 ? text.substring(0, 100) + "..." : text);
 
-                processAsync(text, sessionWebhook, senderNick, conversationId);
+                String sessionDest = isGroup
+                        ? conversationId + ":" + senderId
+                        : conversationId;
+                processAsync(text, sessionWebhook, senderNick, sessionDest);
 
             } catch (Exception e) {
                 log.error("Error handling DingTalk stream message", e);
@@ -90,17 +106,29 @@ public class DingTalkStreamRunner implements CommandLineRunner {
         }
     }
 
+    private boolean isBotMentioned(JsonNode request) {
+        JsonNode atUsers = request.path("atUsers");
+        if (atUsers.isArray() && !atUsers.isEmpty()) {
+            return true;
+        }
+        return request.path("isInAtList").asBoolean(false);
+    }
+
+    private String stripAtBotPrefix(String text) {
+        return text.replaceFirst("^@\\S+\\s*", "").trim();
+    }
+
     private void processAsync(String text, String sessionWebhook, String senderNick,
-                              String conversationId) {
-        cancelInProgress(conversationId);
+                              String sessionDest) {
+        cancelInProgress(sessionDest);
 
         if (sessionWebhook != null) {
             sendTextReply(sessionWebhook, "正在思考...");
         }
 
-        SessionKey key = SessionKey.of("dingtalk", conversationId);
+        SessionKey key = SessionKey.of("dingtalk", sessionDest);
         AtomicBoolean cancelled = new AtomicBoolean(false);
-        inProgressTasks.put(conversationId, () -> {
+        inProgressTasks.put(sessionDest, () -> {
             cancelled.set(true);
             gateway.interrupt(key);
         });
@@ -128,18 +156,18 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                     }
                 }
             } finally {
-                inProgressTasks.remove(conversationId);
+                inProgressTasks.remove(sessionDest);
             }
         });
         t.setDaemon(true);
-        t.setName("dingtalk-agent-" + Math.abs(conversationId.hashCode() % 1000));
+        t.setName("dingtalk-agent-" + Math.abs(sessionDest.hashCode() % 1000));
         t.start();
     }
 
-    private void cancelInProgress(String conversationId) {
-        Runnable cancel = inProgressTasks.remove(conversationId);
+    private void cancelInProgress(String sessionDest) {
+        Runnable cancel = inProgressTasks.remove(sessionDest);
         if (cancel != null) {
-            log.info("Interrupting in-progress DingTalk task for conversation [{}]", conversationId);
+            log.info("Interrupting in-progress DingTalk task for session [{}]", sessionDest);
             cancel.run();
         }
     }

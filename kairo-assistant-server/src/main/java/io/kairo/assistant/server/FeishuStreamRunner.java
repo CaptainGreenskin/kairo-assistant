@@ -88,9 +88,11 @@ public class FeishuStreamRunner implements CommandLineRunner {
                 }
 
                 String chatId = eventData.getMessage().getChatId();
+                String chatType = eventData.getMessage().getChatType();
                 String msgType = eventData.getMessage().getMessageType();
                 String senderOpenId = eventData.getSender() != null
                         ? eventData.getSender().getSenderId().getOpenId() : "unknown";
+                boolean isGroup = "group".equals(chatType);
 
                 String text = extractText(eventData.getMessage().getContent(), msgType);
                 if (text == null || text.isBlank()) {
@@ -98,19 +100,33 @@ public class FeishuStreamRunner implements CommandLineRunner {
                     return;
                 }
 
-                log.info("Feishu inbound from [{}] in chat [{}]: {}", senderOpenId, chatId,
+                if (isGroup && !isBotMentioned(eventData.getMessage().getMentions())) {
+                    log.debug("Ignoring group message without @mention from [{}]", senderOpenId);
+                    return;
+                }
+
+                if (isGroup) {
+                    text = stripMentionTags(text);
+                }
+
+                String sessionDest = isGroup
+                        ? chatId + ":" + senderOpenId
+                        : chatId;
+
+                log.info("Feishu inbound from [{}] in chat [{}]({}): {}", senderOpenId, chatId,
+                        isGroup ? "group" : "p2p",
                         text.length() > 100 ? text.substring(0, 100) + "..." : text);
 
-                cancelInProgress(chatId);
+                cancelInProgress(sessionDest);
 
                 String messageId = sendInitialMessage(apiClient, chatId, "正在思考...");
                 if (messageId == null) {
                     log.warn("Failed to create initial Feishu message, falling back to blocking mode");
-                    fallbackBlockingReply(apiClient, chatId, text);
+                    fallbackBlockingReply(apiClient, chatId, text, sessionDest);
                     return;
                 }
 
-                streamingReply(apiClient, chatId, messageId, text);
+                streamingReply(apiClient, chatId, messageId, text, sessionDest);
 
             } catch (Exception e) {
                 log.error("Error processing Feishu message", e);
@@ -121,12 +137,21 @@ public class FeishuStreamRunner implements CommandLineRunner {
         t.start();
     }
 
-    private void streamingReply(Client apiClient, String chatId, String messageId, String text) {
+    private boolean isBotMentioned(com.lark.oapi.service.im.v1.model.MentionEvent[] mentions) {
+        return mentions != null && mentions.length > 0;
+    }
+
+    private String stripMentionTags(String text) {
+        return text.replaceAll("@_user_\\d+", "").trim();
+    }
+
+    private void streamingReply(Client apiClient, String chatId, String messageId,
+                               String text, String sessionDest) {
         ThinkBlockFilter filter = new ThinkBlockFilter();
         StringBuilder accumulated = new StringBuilder();
         AtomicBoolean cancelled = new AtomicBoolean(false);
-        SessionKey key = SessionKey.of("feishu", chatId);
-        String subId = "feishu-" + chatId + "-" + System.nanoTime();
+        SessionKey key = SessionKey.of("feishu", sessionDest);
+        String subId = "feishu-" + sessionDest + "-" + System.nanoTime();
 
         sessionDeltaRouter.subscribe(key, subId, delta -> {
             String visible = filter.filter(delta);
@@ -147,7 +172,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
             }
         }, PATCH_INTERVAL_MS, PATCH_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
-        inProgressTasks.put(chatId, () -> {
+        inProgressTasks.put(sessionDest, () -> {
             cancelled.set(true);
             gateway.interrupt(key);
             patchFuture.cancel(false);
@@ -186,15 +211,16 @@ public class FeishuStreamRunner implements CommandLineRunner {
                 patchMessage(apiClient, messageId, "Error: " + e.getMessage());
             }
         } finally {
-            inProgressTasks.remove(chatId);
+            inProgressTasks.remove(sessionDest);
             patchFuture.cancel(false);
             sessionDeltaRouter.unsubscribe(key, subId);
         }
     }
 
-    private void fallbackBlockingReply(Client apiClient, String chatId, String text) {
+    private void fallbackBlockingReply(Client apiClient, String chatId, String text,
+                                       String sessionDest) {
         try {
-            SessionKey key = SessionKey.of("feishu", chatId);
+            SessionKey key = SessionKey.of("feishu", sessionDest);
             var response = gateway.route(key, Msg.of(MsgRole.USER, text))
                     .block(Duration.ofMinutes(5));
             if (response != null) {
@@ -206,10 +232,10 @@ public class FeishuStreamRunner implements CommandLineRunner {
         }
     }
 
-    private void cancelInProgress(String chatId) {
-        Runnable cancel = inProgressTasks.remove(chatId);
+    private void cancelInProgress(String sessionDest) {
+        Runnable cancel = inProgressTasks.remove(sessionDest);
         if (cancel != null) {
-            log.info("Interrupting in-progress Feishu task for chat [{}]", chatId);
+            log.info("Interrupting in-progress Feishu task for session [{}]", sessionDest);
             cancel.run();
         }
     }
