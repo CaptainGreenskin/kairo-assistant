@@ -49,4 +49,61 @@ class UserProfileToolTest {
         ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void actionRequired() {
+        ToolResult r = tool.execute(Map.of(), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "reset"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void getRequiresKey() {
+        ToolResult r = tool.execute(Map.of("action", "get"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void setRequiresKey() {
+        ToolResult r = tool.execute(Map.of("action", "set", "value", "val"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void setRequiresValue() {
+        ToolResult r = tool.execute(Map.of("action", "set", "key", "k"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void deleteRequiresKey() {
+        ToolResult r = tool.execute(Map.of("action", "delete"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void emptyListMessage() {
+        ToolResult r = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(r.content()).contains("No preferences");
+    }
+
+    @Test
+    void overwriteExistingPreference() {
+        tool.execute(Map.of("action", "set", "key", "theme", "value", "dark"), ctx).block();
+        tool.execute(Map.of("action", "set", "key", "theme", "value", "light"), ctx).block();
+        ToolResult r = tool.execute(Map.of("action", "get", "key", "theme"), ctx).block();
+        assertThat(r.content()).contains("light");
+    }
+
+    @Test
+    void blankActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
 }
