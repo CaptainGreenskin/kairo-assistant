@@ -79,4 +79,50 @@ class ReadFileToolTest {
         assertThat(result).isNotNull();
         assertThat(result.content()).contains("more lines available");
     }
+
+    @Test
+    void readWithLineNumbers(@TempDir Path tmp) throws IOException {
+        Path file = tmp.resolve("numbered.txt");
+        Files.writeString(file, "alpha\nbeta\ngamma");
+        ToolResult result = tool.execute(Map.of("path", file.toString()), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.content()).contains("1\talpha");
+        assertThat(result.content()).contains("2\tbeta");
+        assertThat(result.content()).contains("3\tgamma");
+    }
+
+    @Test
+    void readMetadataHasLineInfo(@TempDir Path tmp) throws IOException {
+        Path file = tmp.resolve("meta.txt");
+        Files.writeString(file, "one\ntwo\nthree");
+        ToolResult result = tool.execute(Map.of("path", file.toString()), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.metadata()).containsEntry("linesRead", 3);
+        assertThat(result.metadata()).containsEntry("readFrom", 0);
+    }
+
+    @Test
+    void readMissingPathParam() {
+        ToolResult result = tool.execute(Map.of(), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("path");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("path");
+        assertThat(schema.properties()).containsKey("offset");
+        assertThat(schema.properties()).containsKey("limit");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = ReadFileTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("read_file");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.FILE_AND_CODE);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

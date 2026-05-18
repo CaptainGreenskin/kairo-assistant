@@ -101,4 +101,72 @@ class CalendarToolTest {
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Unknown action");
     }
+
+    @Test
+    void missingActionErrors() {
+        ToolResult result = tool.execute(Map.of(), ctx).block();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("action");
+    }
+
+    @Test
+    void dayOfWeekMissingDateErrors() {
+        ToolResult result = tool.execute(Map.of("action", "day_of_week"), ctx).block();
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("date");
+    }
+
+    @Test
+    void diffMissingDate2Errors() {
+        ToolResult result = tool.execute(
+                Map.of("action", "diff", "date", "2026-01-01"), ctx).block();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void addDefaultsToToday() {
+        ToolResult result = tool.execute(
+                Map.of("action", "add", "days", 0), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains(LocalDate.now().toString());
+    }
+
+    @Test
+    void addNegativeDays() {
+        ToolResult result = tool.execute(
+                Map.of("action", "add", "date", "2026-01-10", "days", -3), ctx).block();
+        assertThat(result.content()).contains("2026-01-07");
+    }
+
+    @Test
+    void weekdayCheckOnWeekday() {
+        ToolResult result = tool.execute(
+                Map.of("action", "weekday_check", "date", "2026-05-18"), ctx).block();
+        assertThat(result.content()).contains("weekday");
+    }
+
+    @Test
+    void invalidDateFormatReturnsNull() {
+        ToolResult result = tool.execute(
+                Map.of("action", "day_of_week", "date", "not-a-date"), ctx).block();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("action");
+        assertThat(schema.properties()).containsKey("date");
+        assertThat(schema.properties()).containsKey("date2");
+        assertThat(schema.properties()).containsKey("days");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = CalendarTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("calendar");
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

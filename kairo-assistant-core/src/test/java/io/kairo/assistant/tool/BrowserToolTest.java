@@ -148,4 +148,43 @@ class BrowserToolTest {
         assertThat(r.isError()).isTrue();
         assertThat(r.content()).contains("https://localhost:1");
     }
+
+    @Test
+    void fetchWithExplicitHttpPrefixKeepsIt() {
+        ToolResult r = tool.execute(Map.of("url", baseUrl + "/page"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("http://localhost");
+    }
+
+    @Test
+    void fetchShowsTestContent() {
+        ToolResult r = tool.execute(Map.of("url", baseUrl + "/page"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.content()).contains("test page with some content");
+    }
+
+    @Test
+    void searchBlankQueryErrors() {
+        ToolResult r = tool.execute(
+                Map.of("url", baseUrl + "/page", "action", "search", "query", "  "),
+                ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void inputSchemaRequiresUrl() {
+        assertThat(tool.inputSchema().required()).contains("url");
+        assertThat(tool.inputSchema().type()).isEqualTo("object");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = BrowserTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("browser");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }
