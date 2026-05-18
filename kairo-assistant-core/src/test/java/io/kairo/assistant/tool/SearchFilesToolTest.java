@@ -38,4 +38,51 @@ class SearchFilesToolTest {
         ToolResult r = tool.execute(Map.of("path", "."), ctx).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void blankPatternErrors() {
+        ToolResult r = tool.execute(Map.of("pattern", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void includeFilterNarrowsSearch(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("code.java"), "public class Foo {}");
+        Files.writeString(dir.resolve("readme.md"), "public docs here");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "public", "path", dir.toString(), "include", "*.java"), ctx).block();
+        assertThat(r.content()).contains("code.java");
+        assertThat(r.content()).doesNotContain("readme.md");
+    }
+
+    @Test
+    void maxResultsLimitsOutput(@TempDir Path dir) throws IOException {
+        StringBuilder content = new StringBuilder();
+        for (int i = 0; i < 20; i++) {
+            content.append("match line ").append(i).append("\n");
+        }
+        Files.writeString(dir.resolve("many.txt"), content.toString());
+        ToolResult r = tool.execute(
+                Map.of("pattern", "match line", "path", dir.toString(), "maxResults", 3), ctx).block();
+        long lineCount = r.content().lines().count();
+        assertThat(lineCount).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void showsLineNumbers(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("numbered.txt"), "alpha\nbeta\ngamma\n");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "beta", "path", dir.toString()), ctx).block();
+        assertThat(r.content()).contains(":2:");
+    }
+
+    @Test
+    void searchInSubdirectories(@TempDir Path dir) throws IOException {
+        Path sub = dir.resolve("sub");
+        Files.createDirectories(sub);
+        Files.writeString(sub.resolve("deep.txt"), "deep content here");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "deep content", "path", dir.toString()), ctx).block();
+        assertThat(r.content()).contains("deep content");
+    }
 }
