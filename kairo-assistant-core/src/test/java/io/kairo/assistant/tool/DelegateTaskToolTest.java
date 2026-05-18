@@ -84,4 +84,22 @@ class DelegateTaskToolTest {
         var annotation = DelegateTaskTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
         assertThat(annotation.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
     }
+
+    @Test
+    void contextParameterOptional() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).doesNotContain("context");
+    }
+
+    @Test
+    void maxIterationsParameterInSchema() {
+        var schema = tool.inputSchema();
+        assertThat(schema.properties()).containsKey("maxIterations");
+    }
+
+    @Test
+    void timeoutIs300Seconds() {
+        var annotation = DelegateTaskTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(annotation.timeoutSeconds()).isEqualTo(300);
+    }
 }

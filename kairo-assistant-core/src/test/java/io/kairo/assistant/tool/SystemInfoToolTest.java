@@ -94,4 +94,33 @@ class SystemInfoToolTest {
             assertThat(r.isError()).as("Section '%s' should not error", sec).isFalse();
         }
     }
+
+    @Test
+    void unknownSectionReturnsEmpty() {
+        ToolResult result = tool.execute(Map.of("section", "network"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).isEmpty();
+    }
+
+    @Test
+    void blankSectionDefaultsToAll() {
+        ToolResult result = tool.execute(Map.of("section", ""), ctx).block();
+        assertThat(result.isError()).isFalse();
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.properties()).containsKey("section");
+        assertThat(schema.required()).isEmpty();
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = SystemInfoTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("system_info");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

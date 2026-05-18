@@ -78,4 +78,34 @@ class GitToolTest {
         ToolResult r = tool.execute(Map.of("action", "status", "directory", "/nonexistent_dir_xyz"), ctx).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void blankActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void exitCodeInMetadata() {
+        ToolResult r = tool.execute(Map.of("action", "status"), ctx).block();
+        assertThat(r.metadata()).containsEntry("exitCode", 0);
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("action");
+        assertThat(schema.properties()).containsKey("action");
+        assertThat(schema.properties()).containsKey("directory");
+        assertThat(schema.properties()).containsKey("args");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = GitTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("git");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.FILE_AND_CODE);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }
