@@ -1114,11 +1114,15 @@
                     if (!streamingEl) {
                         streamingEl = document.createElement('div');
                         streamingEl.className = 'message assistant streaming';
+                        streamingEl.dataset.rawBuffer = '';
                         messagesEl.appendChild(streamingEl);
                         streamCharCount = 0;
                         streamFirstDeltaTime = Date.now();
                     }
-                    streamingEl.textContent += data.content;
+                    streamingEl.dataset.rawBuffer = (streamingEl.dataset.rawBuffer || '') + data.content;
+                    // Strip <think>...</think> for display; keep raw buffer for final render
+                    const displayText = streamingEl.dataset.rawBuffer.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*/g, '');
+                    streamingEl.textContent = displayText;
                     streamCharCount += (data.content || '').length;
                     scrollToBottom();
                 } else if (data.type === 'response') {
@@ -1126,7 +1130,7 @@
                     removeThinking();
                     let targetEl = null;
                     if (streamingEl) {
-                        const rawText = streamingEl.textContent;
+                        const rawText = streamingEl.dataset.rawBuffer || streamingEl.textContent;
                         streamingEl.innerHTML = renderMarkdown(rawText);
                         streamingEl.classList.remove('streaming');
                         targetEl = streamingEl;
@@ -1596,6 +1600,9 @@
 
         function renderMarkdown(text) {
             if (!text) return '';
+            // Strip model thinking tags (e.g. MiniMax M2.7 <think>...</think>)
+            text = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+            if (!text.trim()) return '';
             let html = escapeHtml(text);
 
             // Code blocks
