@@ -99,8 +99,12 @@ public final class AssistantAgentFactory {
 
         PluginManager pluginManager = new PluginManager(toolRegistry, skillRegistry, dataPath);
 
+        ConversationStore conversationStore = new ConversationStore(
+                dataPath.resolve("conversations"));
+
         Map<String, Object> toolDeps = new HashMap<>();
         toolDeps.put("memoryStore", memoryStore);
+        toolDeps.put("conversationStore", conversationStore);
         toolDeps.put("modelProvider", modelProvider);
         toolDeps.put("modelName", config.modelName());
 

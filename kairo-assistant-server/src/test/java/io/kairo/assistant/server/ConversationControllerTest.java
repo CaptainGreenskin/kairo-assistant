@@ -91,7 +91,7 @@ class ConversationControllerTest {
 
     @Test
     void searchRequiresQuery() {
-        var result = controller.search("  ");
+        var result = controller.search("  ", 10, "grouped");
         assertNotNull(result.get("error"));
     }
 
@@ -100,7 +100,7 @@ class ConversationControllerTest {
         store.startSession();
         store.appendMessage("user", "find this specific text");
 
-        var result = controller.search("specific text");
+        var result = controller.search("specific text", 10, "flat");
         int total = (int) result.get("total");
         assertTrue(total >= 1);
     }
@@ -110,8 +110,21 @@ class ConversationControllerTest {
         store.startSession();
         store.appendMessage("user", "hello");
 
-        var result = controller.search("zzznomatchzzz");
+        var result = controller.search("zzznomatchzzz", 10, "flat");
         assertEquals(0, result.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchGroupedMode() {
+        store.startSession();
+        store.appendMessage("user", "kubernetes deployment");
+
+        var result = controller.search("kubernetes", 10, "grouped");
+        assertNotNull(result.get("sessionCount"));
+        var sessions = (java.util.List<Map<String, Object>>) result.get("sessions");
+        assertFalse(sessions.isEmpty());
+        assertNotNull(sessions.get(0).get("sessionId"));
     }
 
     @Test

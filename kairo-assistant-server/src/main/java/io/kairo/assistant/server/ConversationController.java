@@ -56,15 +56,26 @@ public class ConversationController {
     }
 
     @GetMapping("/search")
-    public Map<String, Object> search(@RequestParam String q) {
+    public Map<String, Object> search(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "grouped") String mode) {
         if (q == null || q.isBlank()) {
             return Map.of("error", "query parameter 'q' is required");
         }
-        List<Map<String, Object>> results = store.search(q);
+        int clampedLimit = Math.max(1, Math.min(50, limit));
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("query", q);
-        response.put("total", results.size());
-        response.put("results", results);
+
+        if ("flat".equals(mode)) {
+            List<Map<String, Object>> results = store.search(q, clampedLimit);
+            response.put("total", results.size());
+            response.put("results", results);
+        } else {
+            List<Map<String, Object>> sessions = store.searchGrouped(q, clampedLimit);
+            response.put("sessionCount", sessions.size());
+            response.put("sessions", sessions);
+        }
         return response;
     }
 
