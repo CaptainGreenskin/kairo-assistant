@@ -655,18 +655,4 @@ public class StatusController {
                 .toList();
     }
 
-    @GetMapping("/skills")
-    public List<Map<String, Object>> skills() {
-        return session.skillRegistry().list().stream()
-                .map(skill -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", skill.name());
-                    m.put("version", skill.version());
-                    m.put("description", skill.description());
-                    m.put("category", skill.category().name());
-                    m.put("triggers", skill.triggerConditions());
-                    return m;
-                })
-                .toList();
-    }
 }

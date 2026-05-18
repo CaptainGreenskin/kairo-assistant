@@ -172,15 +172,6 @@ class StatusControllerTest {
         assertTrue(metrics.contains("kairo_"));
     }
 
-    @Test
-    void skillsReturnsList() {
-        var skills = controller.skills();
-        assertNotNull(skills);
-        for (var skill : skills) {
-            assertNotNull(skill.get("name"));
-            assertNotNull(skill.get("version"));
-        }
-    }
 
     @Test
     void detailedHealthIncludesMemory() {
