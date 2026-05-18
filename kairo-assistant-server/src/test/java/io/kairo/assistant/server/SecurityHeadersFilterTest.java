@@ -68,4 +68,23 @@ class SecurityHeadersFilterTest {
             assertNotNull(resp.getHeader(header), "Missing header: " + header);
         }
     }
+
+    @Test
+    void cspAllowsWebSocketConnect() throws Exception {
+        var req = new MockHttpServletRequest();
+        var resp = new MockHttpServletResponse();
+        filter.doFilter(req, resp, new MockFilterChain());
+
+        String csp = resp.getHeader("Content-Security-Policy");
+        assertTrue(csp.contains("ws:") || csp.contains("wss:"));
+    }
+
+    @Test
+    void responseStatusUnchanged() throws Exception {
+        var req = new MockHttpServletRequest();
+        var resp = new MockHttpServletResponse();
+        filter.doFilter(req, resp, new MockFilterChain());
+
+        assertEquals(200, resp.getStatus());
+    }
 }

@@ -66,4 +66,27 @@ class DingTalkChannelTest {
         ChannelAck ack = channel.injectInbound("user1", "Alice", "hello").block();
         assertThat(ack.success()).isTrue();
     }
+
+    @Test
+    void stopAndRestartWorks() {
+        DingTalkChannel channel = new DingTalkChannel("dingtalk-test", "https://example.com/hook");
+        channel.start(msg -> Mono.just(ChannelAck.ok())).block();
+        channel.stop().block();
+        channel.start(msg -> Mono.just(ChannelAck.ok())).block();
+        ChannelAck ack = channel.injectInbound("user1", "Bob", "restart test").block();
+        assertThat(ack.success()).isTrue();
+        channel.stop().block();
+    }
+
+    @Test
+    void stopWhenNotStartedDoesNotThrow() {
+        DingTalkChannel channel = new DingTalkChannel("dingtalk-test", "https://example.com/hook");
+        channel.stop().block();
+    }
+
+    @Test
+    void channelIdMatchesConstruction() {
+        DingTalkChannel channel = new DingTalkChannel("custom-dt-id", "https://example.com/hook");
+        assertThat(channel.id()).isEqualTo("custom-dt-id");
+    }
 }

@@ -78,4 +78,23 @@ class EventBroadcasterTest {
         assertEquals(1, events.size());
         assertTrue(events.get(0).isEmpty());
     }
+
+    @Test
+    void noopIsFunctionalInterface() {
+        EventBroadcaster noop = EventBroadcaster.noop();
+        noop.broadcast(Map.of("key", "value"));
+        noop.broadcast(Map.of("another", "event"));
+    }
+
+    @Test
+    void eventDataPreservedInLambda() {
+        var events = new CopyOnWriteArrayList<Map<String, Object>>();
+        EventBroadcaster broadcaster = events::add;
+
+        broadcaster.broadcast(Map.of("type", "chat", "sender", "user1", "content", "hello"));
+
+        assertEquals("chat", events.get(0).get("type"));
+        assertEquals("user1", events.get(0).get("sender"));
+        assertEquals("hello", events.get(0).get("content"));
+    }
 }

@@ -68,6 +68,20 @@ class GracefulShutdownHandlerTest {
         assertTrue(interruptCount.get() >= 1);
     }
 
+    @Test
+    void shutdownAnnotatedWithPreDestroy() throws Exception {
+        var method = GracefulShutdownHandler.class.getMethod("onShutdown");
+        assertTrue(method.isAnnotationPresent(jakarta.annotation.PreDestroy.class));
+    }
+
+    @Test
+    void shutdownCanBeCalledTwice() {
+        var session = createSession(new TestFixtures.StubAgent(), new TestFixtures.StubCronScheduler());
+        var handler = new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector());
+        assertDoesNotThrow(handler::onShutdown);
+        assertDoesNotThrow(handler::onShutdown);
+    }
+
     private AssistantSession createSession(Agent agent, CronScheduler cron) {
         var config = AssistantConfig.builder().apiKey("test").build();
         var toolRegistry = new DefaultToolRegistry();

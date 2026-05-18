@@ -77,4 +77,28 @@ class FeishuChannelTest {
         assertThat(ack).isNotNull();
         assertThat(ack.success()).isFalse();
     }
+
+    @Test
+    void stopAndRestartWorks() {
+        FeishuChannel channel = new FeishuChannel("feishu-test", "https://open.feishu.cn/open-apis/bot/v2/hook/fake");
+        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
+        channel.start(handler).block();
+        channel.stop().block();
+        channel.start(handler).block();
+        ChannelAck ack = channel.injectInbound("u1", "李四", "重启").block();
+        assertThat(ack.success()).isTrue();
+        channel.stop().block();
+    }
+
+    @Test
+    void stopWhenNotStartedDoesNotThrow() {
+        FeishuChannel channel = new FeishuChannel("feishu-test", "https://open.feishu.cn/open-apis/bot/v2/hook/fake");
+        channel.stop().block();
+    }
+
+    @Test
+    void channelIdMatchesConstruction() {
+        FeishuChannel channel = new FeishuChannel("custom-feishu", "https://open.feishu.cn/open-apis/bot/v2/hook/fake");
+        assertThat(channel.id()).isEqualTo("custom-feishu");
+    }
 }
