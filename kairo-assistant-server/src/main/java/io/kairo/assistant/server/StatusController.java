@@ -181,6 +181,46 @@ public class StatusController {
                 .toList();
     }
 
+    @GetMapping("/tools/{name}")
+    public Map<String, Object> toolDetail(@PathVariable String name) {
+        return session.toolRegistry().getAll().stream()
+                .filter(t -> t.name().equals(name))
+                .findFirst()
+                .map(tool -> {
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("name", tool.name());
+                    result.put("description", tool.description());
+                    result.put("category", tool.category().name());
+                    result.put("sideEffect", tool.sideEffect().name());
+                    if (tool.timeout() != null) {
+                        result.put("timeoutSeconds", tool.timeout().toSeconds());
+                    }
+                    if (tool.usageGuidance() != null) {
+                        result.put("usageGuidance", tool.usageGuidance());
+                    }
+                    if (tool.inputSchema() != null) {
+                        result.put("inputSchema", schemaToMap(tool.inputSchema()));
+                    }
+                    return result;
+                })
+                .orElse(Map.of("error", "Tool not found: " + name));
+    }
+
+    private Map<String, Object> schemaToMap(io.kairo.api.tool.JsonSchema schema) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", schema.type());
+        if (schema.description() != null) result.put("description", schema.description());
+        if (schema.required() != null && !schema.required().isEmpty()) {
+            result.put("required", schema.required());
+        }
+        if (schema.properties() != null && !schema.properties().isEmpty()) {
+            Map<String, Object> props = new LinkedHashMap<>();
+            schema.properties().forEach((k, v) -> props.put(k, schemaToMap(v)));
+            result.put("properties", props);
+        }
+        return result;
+    }
+
     @GetMapping("/tools/history")
     public Map<String, Object> toolHistory(@RequestParam(defaultValue = "50") int limit) {
         Map<String, Object> result = new LinkedHashMap<>();

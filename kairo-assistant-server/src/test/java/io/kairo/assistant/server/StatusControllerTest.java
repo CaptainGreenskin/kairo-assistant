@@ -117,6 +117,21 @@ class StatusControllerTest {
     }
 
     @Test
+    void toolDetailReturnsSchema() {
+        var result = controller.toolDetail("test_tool");
+        assertEquals("test_tool", result.get("name"));
+        assertEquals("A test tool", result.get("description"));
+        assertEquals("GENERAL", result.get("category"));
+        assertNotNull(result.get("inputSchema"));
+    }
+
+    @Test
+    void toolDetailNotFoundReturnsError() {
+        var result = controller.toolDetail("nonexistent_tool");
+        assertNotNull(result.get("error"));
+    }
+
+    @Test
     void metricsReturnsPrometheus() {
         String metrics = controller.metrics();
         assertNotNull(metrics);
