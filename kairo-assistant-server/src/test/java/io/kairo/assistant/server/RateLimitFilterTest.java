@@ -84,4 +84,26 @@ class RateLimitFilterTest {
         String key = (String) resolve.invoke(filter, req);
         assertEquals("192.168.0.5", key);
     }
+
+    @Test
+    void initialRemainingIs60() throws Exception {
+        Method remaining = RateLimitFilter.class.getDeclaredMethod("remaining", String.class);
+        remaining.setAccessible(true);
+
+        assertEquals(60, (Integer) remaining.invoke(filter, "brandNewClient"));
+    }
+
+    @Test
+    void resolveClientKeyWithBlankForwardedUsesRemoteAddr() throws Exception {
+        Method resolve = RateLimitFilter.class.getDeclaredMethod("resolveClientKey",
+                jakarta.servlet.http.HttpServletRequest.class);
+        resolve.setAccessible(true);
+
+        var req = new org.springframework.mock.web.MockHttpServletRequest();
+        req.setRemoteAddr("10.0.0.99");
+        req.addHeader("X-Forwarded-For", "");
+
+        String key = (String) resolve.invoke(filter, req);
+        assertEquals("10.0.0.99", key);
+    }
 }

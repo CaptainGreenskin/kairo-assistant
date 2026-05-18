@@ -39,6 +39,18 @@ class WebSocketConfigTest {
         });
     }
 
+    @Test
+    void configAnnotatedAsConfiguration() {
+        assertTrue(WebSocketConfig.class.isAnnotationPresent(
+                org.springframework.context.annotation.Configuration.class));
+    }
+
+    @Test
+    void enableWebSocketAnnotationPresent() {
+        assertTrue(WebSocketConfig.class.isAnnotationPresent(
+                org.springframework.web.socket.config.annotation.EnableWebSocket.class));
+    }
+
     private AssistantWebSocketHandler createHandler() {
         var session = TestFixtures.defaultSession();
         return new AssistantWebSocketHandler(session, new SessionManager(session), new MetricsCollector());

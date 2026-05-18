@@ -62,4 +62,32 @@ class TerminalMarkdownRendererTest {
         String result = TerminalMarkdownRenderer.render("above\n---\nbelow");
         assertTrue(result.contains("────"));
     }
+
+    @Test
+    void rendersItalicText() {
+        String result = TerminalMarkdownRenderer.render("this is *italic* text");
+        assertTrue(result.contains("\033[3m"));
+        assertTrue(result.contains("italic"));
+        assertFalse(result.contains("*italic*"));
+    }
+
+    @Test
+    void rendersOrderedList() {
+        String result = TerminalMarkdownRenderer.render("1. first\n2. second");
+        assertTrue(result.contains("1."));
+        assertTrue(result.contains("first"));
+    }
+
+    @Test
+    void rendersCodeBlockWithoutLanguage() {
+        String result = TerminalMarkdownRenderer.render("```\nhello\n```");
+        assertTrue(result.contains("hello"));
+        assertFalse(result.contains("```"));
+    }
+
+    @Test
+    void plainTextUnchanged() {
+        String result = TerminalMarkdownRenderer.render("plain text with no markdown");
+        assertEquals("plain text with no markdown", result);
+    }
 }

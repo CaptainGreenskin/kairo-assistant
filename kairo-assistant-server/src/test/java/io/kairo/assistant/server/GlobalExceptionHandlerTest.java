@@ -65,4 +65,25 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, resp.getStatusCode());
         assertTrue(resp.getBody().get("error").contains("Unknown"));
     }
+
+    @Test
+    void badRequestResponseHasErrorKey() {
+        ResponseEntity<Map<String, String>> resp =
+                handler.handleBadRequest(new IllegalArgumentException("test"));
+        assertNotNull(resp.getBody());
+        assertTrue(resp.getBody().containsKey("error"));
+    }
+
+    @Test
+    void timeoutResponseContainsModelOverloaded() {
+        ResponseEntity<Map<String, String>> resp =
+                handler.handleTimeout(new java.util.concurrent.TimeoutException("slow"));
+        assertTrue(resp.getBody().get("error").contains("overloaded"));
+    }
+
+    @Test
+    void classAnnotatedWithRestControllerAdvice() {
+        assertTrue(GlobalExceptionHandler.class.isAnnotationPresent(
+                org.springframework.web.bind.annotation.RestControllerAdvice.class));
+    }
 }
