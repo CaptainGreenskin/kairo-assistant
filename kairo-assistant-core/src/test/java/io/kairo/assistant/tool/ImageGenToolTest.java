@@ -66,4 +66,32 @@ class ImageGenToolTest {
         ToolResult r = tool.execute(Map.of("prompt", "A dog"), emptyDeps).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void blankApiKeyInDependenciesErrors() {
+        ToolContext blankKey = new ToolContext("a", "s", Map.of("openaiApiKey", "  "));
+        ToolResult r = tool.execute(Map.of("prompt", "A bird"), blankKey).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("OPENAI_API_KEY");
+    }
+
+    @Test
+    void sizeParameterAccepted() {
+        ToolResult r = tool.execute(
+                Map.of("prompt", "A landscape", "size", "1792x1024"), withKey).block();
+        assertThat(r).isNotNull();
+    }
+
+    @Test
+    void modelParameterAccepted() {
+        ToolResult r = tool.execute(
+                Map.of("prompt", "A portrait", "model", "dall-e-2"), withKey).block();
+        assertThat(r).isNotNull();
+    }
+
+    @Test
+    void sideEffectIsWrite() {
+        var ann = ImageGenTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
+    }
 }

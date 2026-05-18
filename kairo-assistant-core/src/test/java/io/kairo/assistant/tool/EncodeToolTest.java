@@ -95,4 +95,36 @@ class EncodeToolTest {
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEmpty();
     }
+
+    @Test
+    void sha1NotSupported() {
+        ToolResult result = tool.execute(
+                Map.of("action", "sha1", "input", "hello"), ctx).block();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void hexDecodeInvalidInput() {
+        ToolResult result = tool.execute(
+                Map.of("action", "hex_decode", "input", "xyz"), ctx).block();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void urlEncodeSpecialChars() {
+        ToolResult result = tool.execute(
+                Map.of("action", "url_encode", "input", "a b/c?d=e"), ctx).block();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).doesNotContain(" ");
+        assertThat(result.content()).contains("%2F");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = EncodeTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("encode");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.GENERAL);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

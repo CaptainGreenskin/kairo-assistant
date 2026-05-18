@@ -99,11 +99,34 @@ class ListDirectoryToolTest {
     }
 
     @Test
-    void schemaFields() {
+    void blankPathUsesCurrentDir() {
+        ToolResult r = tool.execute(Map.of("path", ""), ctx).block();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void maxDepthClampedToLimit(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("root.txt"), "r");
+        ToolResult r = tool.execute(
+                Map.of("path", dir.toString(), "recursive", true, "maxDepth", 999), ctx).block();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void inputSchemaFields() {
         var schema = tool.inputSchema();
         assertThat(schema.properties()).containsKey("path");
         assertThat(schema.properties()).containsKey("recursive");
         assertThat(schema.properties()).containsKey("maxDepth");
         assertThat(schema.required()).isEmpty();
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = ListDirectoryTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("list_directory");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.FILE_AND_CODE);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
     }
 }

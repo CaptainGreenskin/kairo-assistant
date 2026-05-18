@@ -1,6 +1,6 @@
 package io.kairo.assistant.tool;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
@@ -8,37 +8,71 @@ class ToolLimitsTest {
 
     @Test
     void maxOutputCharsIsPositive() {
-        assertTrue(ToolLimits.MAX_OUTPUT_CHARS > 0);
-        assertEquals(50_000, ToolLimits.MAX_OUTPUT_CHARS);
+        assertThat(ToolLimits.MAX_OUTPUT_CHARS).isPositive();
+        assertThat(ToolLimits.MAX_OUTPUT_CHARS).isEqualTo(50_000);
     }
 
     @Test
     void truncateReturnsShortStringUnchanged() {
-        assertEquals("hello", ToolLimits.truncate("hello"));
+        assertThat(ToolLimits.truncate("hello")).isEqualTo("hello");
     }
 
     @Test
     void truncateHandlesNull() {
-        assertEquals("", ToolLimits.truncate(null));
+        assertThat(ToolLimits.truncate(null)).isEmpty();
     }
 
     @Test
     void truncateHandlesEmpty() {
-        assertEquals("", ToolLimits.truncate(""));
+        assertThat(ToolLimits.truncate("")).isEmpty();
     }
 
     @Test
     void truncateHandlesExactLimit() {
         String exact = "a".repeat(ToolLimits.MAX_OUTPUT_CHARS);
-        assertEquals(exact, ToolLimits.truncate(exact));
+        assertThat(ToolLimits.truncate(exact)).isEqualTo(exact);
     }
 
     @Test
     void truncateCutsOverLimit() {
         String over = "a".repeat(ToolLimits.MAX_OUTPUT_CHARS + 100);
         String result = ToolLimits.truncate(over);
-        assertTrue(result.startsWith("a".repeat(ToolLimits.MAX_OUTPUT_CHARS)));
-        assertTrue(result.contains("truncated"));
-        assertTrue(result.contains(String.valueOf(over.length())));
+        assertThat(result).startsWith("a".repeat(100));
+        assertThat(result).contains("truncated");
+        assertThat(result).contains(String.valueOf(over.length()));
+    }
+
+    @Test
+    void truncateOneBeyondLimit() {
+        String over = "x".repeat(ToolLimits.MAX_OUTPUT_CHARS + 1);
+        String result = ToolLimits.truncate(over);
+        assertThat(result).hasSize(ToolLimits.MAX_OUTPUT_CHARS +
+                ("\n... (truncated, total " + over.length() + " chars)").length());
+    }
+
+    @Test
+    void truncatePreservesPrefix() {
+        String prefix = "PREFIX_";
+        String over = prefix + "y".repeat(ToolLimits.MAX_OUTPUT_CHARS);
+        String result = ToolLimits.truncate(over);
+        assertThat(result).startsWith(prefix);
+    }
+
+    @Test
+    void truncateSuffixContainsTotalLength() {
+        int total = ToolLimits.MAX_OUTPUT_CHARS + 5000;
+        String over = "z".repeat(total);
+        String result = ToolLimits.truncate(over);
+        assertThat(result).contains(String.valueOf(total));
+    }
+
+    @Test
+    void truncateSingleCharString() {
+        assertThat(ToolLimits.truncate("a")).isEqualTo("a");
+    }
+
+    @Test
+    void truncateWhitespaceOnly() {
+        assertThat(ToolLimits.truncate("   ")).isEqualTo("   ");
     }
 }
