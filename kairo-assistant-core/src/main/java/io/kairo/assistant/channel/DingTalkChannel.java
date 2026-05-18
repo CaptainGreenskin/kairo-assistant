@@ -11,13 +11,17 @@ import io.kairo.api.channel.ChannelInboundHandler;
 import io.kairo.api.channel.ChannelMessage;
 import io.kairo.api.channel.ChannelOutboundSender;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -29,7 +33,8 @@ import reactor.core.publisher.Mono;
  * server or Spring controller to forward messages). Use {@link #injectInbound(String, String,
  * String)} to programmatically push messages.
  *
- * <p>Outbound: sends messages via DingTalk Robot webhook URL.
+ * <p>Outbound: sends messages via DingTalk Robot webhook URL. Supports optional HMAC-SHA256
+ * signing when a secret is provided.
  */
 public class DingTalkChannel implements Channel {
 
@@ -37,21 +42,28 @@ public class DingTalkChannel implements Channel {
 
     private final String channelId;
     private final String webhookUrl;
+    private final String secret;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicReference<ChannelInboundHandler> handlerRef = new AtomicReference<>();
 
     public DingTalkChannel(String channelId, String webhookUrl) {
+        this(channelId, webhookUrl, null);
+    }
+
+    public DingTalkChannel(String channelId, String webhookUrl, String secret) {
         this.channelId = channelId;
         this.webhookUrl = webhookUrl;
+        this.secret = secret;
         this.httpClient =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
-    DingTalkChannel(String channelId, String webhookUrl, HttpClient httpClient) {
+    DingTalkChannel(String channelId, String webhookUrl, String secret, HttpClient httpClient) {
         this.channelId = channelId;
         this.webhookUrl = webhookUrl;
+        this.secret = secret;
         this.httpClient = httpClient;
     }
 
@@ -117,9 +129,11 @@ public class DingTalkChannel implements Channel {
             ObjectNode text = body.putObject("text");
             text.put("content", message.content());
 
+            String url = buildSignedUrl();
+
             HttpRequest request =
                     HttpRequest.newBuilder()
-                            .uri(URI.create(webhookUrl))
+                            .uri(URI.create(url))
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(
                                     mapper.writeValueAsString(body)))
@@ -145,6 +159,27 @@ public class DingTalkChannel implements Channel {
         } catch (Exception e) {
             log.error("Failed to send to DingTalk", e);
             return ChannelAck.fail(ChannelFailureMode.SEND_FAILED, e.getMessage());
+        }
+    }
+
+    private String buildSignedUrl() {
+        if (secret == null || secret.isBlank()) {
+            return webhookUrl;
+        }
+        try {
+            long timestamp = System.currentTimeMillis();
+            String stringToSign = timestamp + "\n" + secret;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] signData = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
+            String sign = URLEncoder.encode(
+                    java.util.Base64.getEncoder().encodeToString(signData),
+                    StandardCharsets.UTF_8);
+            String separator = webhookUrl.contains("?") ? "&" : "?";
+            return webhookUrl + separator + "timestamp=" + timestamp + "&sign=" + sign;
+        } catch (Exception e) {
+            log.warn("Failed to compute DingTalk sign, sending without signature: {}", e.getMessage());
+            return webhookUrl;
         }
     }
 }

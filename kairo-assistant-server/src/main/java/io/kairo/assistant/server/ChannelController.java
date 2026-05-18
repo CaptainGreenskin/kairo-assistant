@@ -150,7 +150,8 @@ public class ChannelController {
         return (DingTalkChannel) channels.computeIfAbsent("dingtalk", id -> {
             String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
             if (webhookUrl == null) webhookUrl = "https://oapi.dingtalk.com/robot/send";
-            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
+            String secret = System.getenv("DINGTALK_SECRET");
+            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl, secret);
             ChannelGateway gw = new ChannelGateway(channel, session.agent());
             gw.start().subscribe();
             gateways.put("dingtalk", gw);
