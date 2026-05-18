@@ -81,11 +81,7 @@ public class ChatController {
 
         if (session.agent() instanceof DefaultReActAgent agent) {
             agent.setTextDeltaConsumer(delta -> {
-                String escaped = delta.replace("\\", "\\\\")
-                        .replace("\"", "\\\"")
-                        .replace("\n", "\\n")
-                        .replace("\r", "\\r");
-                sink.tryEmitNext("data: {\"type\":\"delta\",\"content\":\"" + escaped + "\"}\n\n");
+                sink.tryEmitNext("data: {\"type\":\"delta\",\"content\":\"" + JsonEscape.escape(delta) + "\"}\n\n");
                 if (prevConsumer != null) prevConsumer.accept(delta);
             });
         }
@@ -94,11 +90,7 @@ public class ChatController {
         session.agent().call(input)
                 .doOnSuccess(response -> {
                     if (response != null) {
-                        String escaped = response.text().replace("\\", "\\\\")
-                                .replace("\"", "\\\"")
-                                .replace("\n", "\\n")
-                                .replace("\r", "\\r");
-                        sink.tryEmitNext("data: {\"type\":\"response\",\"content\":\"" + escaped + "\"}\n\n");
+                        sink.tryEmitNext("data: {\"type\":\"response\",\"content\":\"" + JsonEscape.escape(response.text()) + "\"}\n\n");
                     }
                     sink.tryEmitNext("data: {\"type\":\"done\"}\n\n");
                     sink.tryEmitComplete();
@@ -106,11 +98,7 @@ public class ChatController {
                 })
                 .doOnError(e -> {
                     String errMsg = e.getMessage() != null ? e.getMessage() : "unknown error";
-                    String escapedErr = errMsg.replace("\\", "\\\\")
-                            .replace("\"", "\\\"")
-                            .replace("\n", "\\n")
-                            .replace("\r", "\\r");
-                    sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + escapedErr + "\"}\n\n");
+                    sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + JsonEscape.escape(errMsg) + "\"}\n\n");
                     sink.tryEmitComplete();
                     restoreConsumer(prevConsumer);
                 })

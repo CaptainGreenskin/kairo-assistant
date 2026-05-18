@@ -57,7 +57,7 @@ public class SseController {
 
         if (session.agent() instanceof DefaultReActAgent agent) {
             agent.setTextDeltaConsumer(delta -> {
-                String escaped = escapeJson(delta);
+                String escaped = JsonEscape.escape(delta);
                 sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
             });
         }
@@ -66,7 +66,7 @@ public class SseController {
         session.agent().call(input)
                 .doOnSuccess(response -> {
                     if (response != null) {
-                        sink.tryEmitNext(sseEvent("response", Map.of("content", escapeJson(response.text()))));
+                        sink.tryEmitNext(sseEvent("response", Map.of("content", JsonEscape.escape(response.text()))));
                     }
                     sink.tryEmitNext(sseEvent("done", Map.of()));
                     if (session.agent() instanceof DefaultReActAgent agent) {
@@ -74,7 +74,7 @@ public class SseController {
                     }
                 })
                 .doOnError(e -> {
-                    sink.tryEmitNext(sseEvent("error", Map.of("message", escapeJson(e.getMessage()))));
+                    sink.tryEmitNext(sseEvent("error", Map.of("message", JsonEscape.escape(e.getMessage()))));
                     if (session.agent() instanceof DefaultReActAgent agent) {
                         agent.setTextDeltaConsumer(null);
                     }
@@ -104,11 +104,4 @@ public class SseController {
         return "data: " + sb + "\n\n";
     }
 
-    private String escapeJson(String text) {
-        if (text == null) return "";
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
-    }
 }

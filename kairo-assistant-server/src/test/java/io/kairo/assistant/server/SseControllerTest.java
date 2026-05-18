@@ -9,24 +9,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class SseControllerTest {
 
     @Test
-    void escapeJsonHandlesSpecialChars() throws Exception {
-        SseController controller = createController();
-        Method escapeJson = SseController.class.getDeclaredMethod("escapeJson", String.class);
-        escapeJson.setAccessible(true);
-
-        assertEquals("hello\\nworld", escapeJson.invoke(controller, "hello\nworld"));
-        assertEquals("say \\\"hi\\\"", escapeJson.invoke(controller, "say \"hi\""));
-        assertEquals("back\\\\slash", escapeJson.invoke(controller, "back\\slash"));
-        assertEquals("line\\r\\nbreak", escapeJson.invoke(controller, "line\r\nbreak"));
+    void escapeJsonHandlesSpecialChars() {
+        assertEquals("hello\\nworld", JsonEscape.escape("hello\nworld"));
+        assertEquals("say \\\"hi\\\"", JsonEscape.escape("say \"hi\""));
+        assertEquals("back\\\\slash", JsonEscape.escape("back\\slash"));
+        assertEquals("line\\r\\nbreak", JsonEscape.escape("line\r\nbreak"));
     }
 
     @Test
-    void escapeJsonHandlesNull() throws Exception {
-        SseController controller = createController();
-        Method escapeJson = SseController.class.getDeclaredMethod("escapeJson", String.class);
-        escapeJson.setAccessible(true);
-
-        assertEquals("", escapeJson.invoke(controller, (Object) null));
+    void escapeJsonHandlesNull() {
+        assertEquals("", JsonEscape.escape(null));
     }
 
     @Test
