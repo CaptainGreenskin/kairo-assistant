@@ -78,4 +78,42 @@ class FeedbackControllerTest {
         assertEquals("feedback", events.get(0).get("type"));
         assertEquals("positive", events.get(0).get("rating"));
     }
+
+    @Test
+    void submitNeutralRatingIsValid() {
+        var result = controller.submitFeedback(Map.of("content", "meh", "rating", "neutral"));
+        assertEquals("ok", result.get("status"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listFeedbackEntriesHaveTimestamps() {
+        controller.submitFeedback(Map.of("content", "test", "rating", "positive"));
+        var result = controller.listFeedback(10);
+        var entries = (List<FeedbackController.FeedbackEntry>) result.get("entries");
+        assertFalse(entries.isEmpty());
+        assertNotNull(entries.get(0).timestamp());
+        assertTrue(entries.get(0).timestamp().startsWith("20"));
+    }
+
+    @Test
+    void submitWithFeedbackTextField() {
+        var result = controller.submitFeedback(Map.of(
+                "content", "response x", "rating", "negative", "feedback", "too verbose"));
+        assertEquals("ok", result.get("status"));
+
+        var list = controller.listFeedback(10);
+        assertEquals(1, list.get("total"));
+    }
+
+    @Test
+    void defaultLimitIs50() {
+        for (int i = 0; i < 60; i++) {
+            controller.submitFeedback(Map.of("content", "m" + i, "rating", "positive"));
+        }
+        var result = controller.listFeedback(50);
+        @SuppressWarnings("unchecked")
+        var entries = (List<?>) result.get("entries");
+        assertEquals(50, entries.size());
+    }
 }

@@ -111,4 +111,47 @@ class ChannelControllerTest {
         assertTrue(ids.contains("dingtalk"));
         assertTrue(ids.contains("feishu"));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listChannelsContainsTelegram() {
+        var result = controller.list();
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var ids = channels.stream().map(c -> c.get("id")).toList();
+        assertTrue(ids.contains("telegram"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listChannelsContainsSlack() {
+        var result = controller.list();
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var ids = channels.stream().map(c -> c.get("id")).toList();
+        assertTrue(ids.contains("slack"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listChannelsStatusIsAvailableWhenNotActive() {
+        var result = controller.list();
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var status = channels.stream().map(c -> c.get("status")).distinct().toList();
+        assertTrue(status.contains("available"));
+    }
+
+    @Test
+    void sendMissingContentKeyReturnsError() {
+        var body = Map.of("destination", "user1");
+        var result = controller.send("some-channel", body).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+    }
+
+    @Test
+    void feishuWebhookEmptyBodyReturnsError() {
+        var body = Map.<String, Object>of();
+        var result = controller.feishuWebhook(body).block();
+        assertNotNull(result);
+        assertTrue(result.containsKey("error"));
+    }
 }
