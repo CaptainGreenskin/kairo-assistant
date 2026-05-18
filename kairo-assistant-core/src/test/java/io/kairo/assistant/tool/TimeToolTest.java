@@ -40,4 +40,50 @@ class TimeToolTest {
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Invalid timezone");
     }
+
+    @Test
+    void returnsTimeInUtc() {
+        ToolResult result = tool.execute(Map.of("timezone", "UTC"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("UTC");
+    }
+
+    @Test
+    void returnsTimeInUSPacific() {
+        ToolResult result = tool.execute(Map.of("timezone", "US/Pacific"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("202");
+    }
+
+    @Test
+    void blankTimezoneUsesSystemDefault() {
+        ToolResult result = tool.execute(Map.of("timezone", ""), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+    }
+
+    @Test
+    void containsDayOfWeek() {
+        ToolResult result = tool.execute(Map.of(), emptyCtx()).block();
+        assertThat(result.content()).matches(".*\\(.+\\).*");
+    }
+
+    @Test
+    void inputSchemaHasTimezoneField() {
+        var schema = tool.inputSchema();
+        assertThat(schema.type()).isEqualTo("object");
+        assertThat(schema.properties()).containsKey("timezone");
+        assertThat(schema.required()).isEmpty();
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = TimeTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("time");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

@@ -109,4 +109,59 @@ class McpClientToolTest {
         assertThat(r.isError()).isTrue();
         assertThat(r.content()).contains("Failed to list tools");
     }
+
+    @Test
+    void callWithDefaultArguments() {
+        ToolResult r = tool.execute(
+                Map.of("action", "call", "server_url", serverUrl,
+                        "tool_name", "echo"),
+                ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("called ok");
+    }
+
+    @Test
+    void callWithBlankToolNameFails() {
+        ToolResult r = tool.execute(
+                Map.of("action", "call", "server_url", serverUrl,
+                        "tool_name", "  "),
+                ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("tool_name");
+    }
+
+    @Test
+    void missingActionErrors() {
+        ToolResult r = tool.execute(
+                Map.of("server_url", serverUrl), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void missingServerUrlErrors() {
+        ToolResult r = tool.execute(
+                Map.of("action", "list_tools"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void inputSchemaRequiresActionAndUrl() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("action", "server_url");
+        assertThat(schema.properties()).containsKey("tool_name");
+        assertThat(schema.properties()).containsKey("arguments");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = McpClientTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("mcp_client");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.EXTERNAL);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
+    }
 }

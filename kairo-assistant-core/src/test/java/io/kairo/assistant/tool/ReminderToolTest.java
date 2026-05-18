@@ -52,6 +52,91 @@ class ReminderToolTest {
         assertThat(r.isError()).isTrue();
     }
 
+    @Test
+    void createRequiresMessage() {
+        ToolResult r = tool.execute(Map.of("action", "create", "cron", "0 9 * * *"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("message");
+    }
+
+    @Test
+    void createWithBlankCronFails() {
+        ToolResult r = tool.execute(
+                Map.of("action", "create", "cron", "  ", "message", "hello"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("cron");
+    }
+
+    @Test
+    void unknownActionErrors() {
+        ToolResult r = tool.execute(Map.of("action", "pause"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("Unknown action");
+    }
+
+    @Test
+    void listEmptyReturnsNoReminders() {
+        ToolResult r = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("No active");
+    }
+
+    @Test
+    void deleteRequiresId() {
+        ToolResult r = tool.execute(Map.of("action", "delete"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("id");
+    }
+
+    @Test
+    void deleteNonExistentIdFails() {
+        ToolResult r = tool.execute(Map.of("action", "delete", "id", "no-such-id"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("not found");
+    }
+
+    @Test
+    void createNonRecurring() {
+        ToolResult r = tool.execute(
+                Map.of("action", "create", "cron", "0 9 * * *", "message", "once", "recurring", false),
+                ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("recurring=false");
+    }
+
+    @Test
+    void inputSchemaRequiresAction() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("action");
+        assertThat(schema.properties()).containsKey("cron");
+        assertThat(schema.properties()).containsKey("message");
+        assertThat(schema.properties()).containsKey("recurring");
+        assertThat(schema.properties()).containsKey("id");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = ReminderTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("reminder");
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
+    }
+
+    @Test
+    void emptyDepsNoScheduler() {
+        ToolContext emptyDeps = new ToolContext("a", "s", Map.of());
+        ToolResult r = tool.execute(Map.of("action", "list"), emptyDeps).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("CronScheduler");
+    }
+
+    @Test
+    void defaultActionIsList() {
+        ToolResult r = tool.execute(Map.of(), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("No active");
+    }
+
     static class StubCronScheduler implements CronScheduler {
         final List<CronTask> tasks = new ArrayList<>();
 

@@ -141,4 +141,53 @@ class WeatherToolTest {
         assertThat(schema.properties().get("action").description()).contains("current");
         assertThat(schema.properties().get("action").description()).contains("forecast");
     }
+
+    @Test
+    void toolAnnotationCategory() {
+        var annotation = WeatherTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(annotation.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(annotation.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
+
+    @Test
+    void weatherCodeToTextDrizzleCodes() {
+        assertThat(WeatherTool.weatherCodeToText(53)).isEqualTo("Drizzle");
+        assertThat(WeatherTool.weatherCodeToText(55)).isEqualTo("Drizzle");
+    }
+
+    @Test
+    void weatherCodeToTextRainCodes() {
+        assertThat(WeatherTool.weatherCodeToText(63)).isEqualTo("Rain");
+        assertThat(WeatherTool.weatherCodeToText(65)).isEqualTo("Rain");
+    }
+
+    @Test
+    void weatherCodeToTextFreezingRainCodes() {
+        assertThat(WeatherTool.weatherCodeToText(67)).isEqualTo("Freezing rain");
+    }
+
+    @Test
+    void weatherCodeToTextSnowCodes() {
+        assertThat(WeatherTool.weatherCodeToText(73)).isEqualTo("Snowfall");
+        assertThat(WeatherTool.weatherCodeToText(75)).isEqualTo("Snowfall");
+    }
+
+    @Test
+    void weatherCodeToTextShowerCodes() {
+        assertThat(WeatherTool.weatherCodeToText(81)).isEqualTo("Rain showers");
+        assertThat(WeatherTool.weatherCodeToText(82)).isEqualTo("Rain showers");
+        assertThat(WeatherTool.weatherCodeToText(86)).isEqualTo("Snow showers");
+    }
+
+    @Test
+    void weatherCodeToTextHailCodes() {
+        assertThat(WeatherTool.weatherCodeToText(99)).isEqualTo("Thunderstorm with hail");
+    }
+
+    @Test
+    void schemaTypeIsObject() {
+        var schema = toolWithServer.inputSchema();
+        assertThat(schema.type()).isEqualTo("object");
+        assertThat(schema.properties()).hasSize(2);
+    }
 }

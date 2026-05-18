@@ -68,4 +68,68 @@ class PatchToolTest {
                 "new_string", "b"), ctx).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void missingPathParam() {
+        ToolResult r = tool.execute(Map.of(
+                "old_string", "a", "new_string", "b"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("path");
+    }
+
+    @Test
+    void missingOldStringParam() {
+        ToolResult r = tool.execute(Map.of(
+                "path", "/tmp/x", "new_string", "b"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("old_string");
+    }
+
+    @Test
+    void missingNewStringParam() {
+        ToolResult r = tool.execute(Map.of(
+                "path", "/tmp/x", "old_string", "a"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("new_string");
+    }
+
+    @Test
+    void replacePreservesRestOfFile(@TempDir Path dir) throws IOException {
+        Path file = Files.writeString(dir.resolve("ctx.txt"), "line1\nfoo\nline3");
+        ToolResult r = tool.execute(Map.of(
+                "path", file.toString(),
+                "old_string", "foo",
+                "new_string", "bar"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(Files.readString(file)).isEqualTo("line1\nbar\nline3");
+    }
+
+    @Test
+    void replaceAllReturnsCount(@TempDir Path dir) throws IOException {
+        Path file = Files.writeString(dir.resolve("cnt.txt"), "x x x");
+        ToolResult r = tool.execute(Map.of(
+                "path", file.toString(),
+                "old_string", "x",
+                "new_string", "y",
+                "replace_all", true), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("3 occurrence");
+        assertThat(Files.readString(file)).isEqualTo("y y y");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("path", "old_string", "new_string");
+        assertThat(schema.properties()).containsKey("replace_all");
+        assertThat(schema.type()).isEqualTo("object");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = PatchTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("patch");
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
+    }
 }
