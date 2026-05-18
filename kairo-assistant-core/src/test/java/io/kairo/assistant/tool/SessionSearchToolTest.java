@@ -46,4 +46,37 @@ class SessionSearchToolTest {
         ToolResult r = tool.execute(Map.of("query", "test"), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void blankQueryErrors() {
+        ToolResult r = tool.execute(Map.of("query", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    @Test
+    void searchWithLimit() {
+        for (int i = 0; i < 5; i++) {
+            store.save(new MemoryEntry("s" + i, null, "session item " + i, null,
+                    MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+        }
+        ToolResult r = tool.execute(Map.of("query", "session item", "limit", 2), ctx).block();
+        assertThat(r.content()).contains("Found 2 result");
+    }
+
+    @Test
+    void resultShowsTags() {
+        store.save(new MemoryEntry("tag1", null, "tagged search result", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of("important"), Instant.now(), null)).block();
+        ToolResult r = tool.execute(Map.of("query", "tagged search"), ctx).block();
+        assertThat(r.content()).contains("tags:");
+        assertThat(r.content()).contains("important");
+    }
+
+    @Test
+    void searchWithScope() {
+        store.save(new MemoryEntry("scoped1", null, "scoped search test", null,
+                MemoryScope.AGENT, 0.5, null, Set.of(), Instant.now(), null)).block();
+        ToolResult r = tool.execute(Map.of("query", "scoped search", "scope", "agent"), ctx).block();
+        assertThat(r.isError()).isFalse();
+    }
 }
