@@ -560,6 +560,61 @@ class StatusControllerTest {
         assertNotNull(result.get("totalDurationMs"));
     }
 
+    @Test
+    void batchExecuteEmptyCallsReturnsError() {
+        var result = controller.batchExecuteTools(Map.of()).block();
+        assertNotNull(result);
+        assertNotNull(result.get("error"));
+        assertTrue(result.get("error").toString().contains("calls"));
+    }
+
+    @Test
+    void batchExecuteUnknownToolReturnsError() {
+        var result = controller.batchExecuteTools(Map.of(
+                "calls", List.of(Map.of("tool", "nonexistent_tool")))).block();
+        assertNotNull(result);
+        assertTrue(result.get("error").toString().contains("unknown tool"));
+    }
+
+    @Test
+    void batchExecuteMissingToolNameReturnsError() {
+        var result = controller.batchExecuteTools(Map.of(
+                "calls", List.of(Map.of("args", Map.of())))).block();
+        assertNotNull(result);
+        assertTrue(result.get("error").toString().contains("tool"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void batchExecuteReturnsResults() {
+        var batchExecutor = new TestFixtures.StubToolExecutor() {
+            @Override
+            public reactor.core.publisher.Mono<io.kairo.api.tool.ToolResult> execute(
+                    String name, Map<String, Object> input) {
+                return reactor.core.publisher.Mono.just(
+                        io.kairo.api.tool.ToolResult.success(name, "batch ok"));
+            }
+        };
+        var config = TestFixtures.defaultConfig();
+        var skillRegistry = AssistantSkills.createRegistry();
+        var sess = new AssistantSession(
+                new TestFixtures.StubAgent(), toolRegistry, batchExecutor,
+                new InMemoryStore(), new TestFixtures.StubCronScheduler(),
+                skillRegistry,
+                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                config);
+        var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
+
+        var result = ctrl.batchExecuteTools(Map.of(
+                "calls", List.of(Map.of("tool", "test_tool")))).block();
+        assertNotNull(result);
+        assertEquals(1, result.get("total"));
+        var results = (java.util.List<Map<String, Object>>) result.get("results");
+        assertEquals(1, results.size());
+        assertEquals("test_tool", results.get(0).get("tool"));
+        assertEquals(true, results.get(0).get("success"));
+    }
+
     private StatusController controllerWithDataDir(Path dataDir) {
         var config = AssistantConfig.builder()
                 .apiKey("test-key")

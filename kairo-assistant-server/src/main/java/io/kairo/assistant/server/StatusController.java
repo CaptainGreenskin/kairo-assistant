@@ -312,6 +312,57 @@ public class StatusController {
                         "tool", toolName, "error", e.getMessage())));
     }
 
+    @PostMapping("/tools/batch")
+    public Mono<Map<String, Object>> batchExecuteTools(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> calls = body.get("calls") instanceof List<?> list
+                ? list.stream()
+                    .filter(e -> e instanceof Map)
+                    .map(e -> (Map<String, Object>) e)
+                    .toList()
+                : List.of();
+
+        if (calls.isEmpty()) {
+            return Mono.just(Map.of("error", "'calls' array is required with at least one tool invocation"));
+        }
+
+        List<io.kairo.api.tool.ToolInvocation> invocations = new java.util.ArrayList<>();
+        for (Map<String, Object> call : calls) {
+            String toolName = (String) call.get("tool");
+            if (toolName == null || toolName.isBlank()) {
+                return Mono.just(Map.of("error", "each call must have a 'tool' name"));
+            }
+            boolean exists = session.toolRegistry().getAll().stream()
+                    .anyMatch(t -> t.name().equals(toolName));
+            if (!exists) {
+                return Mono.just(Map.of("error", "unknown tool: " + toolName));
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> args = call.get("args") instanceof Map
+                    ? (Map<String, Object>) call.get("args") : Map.of();
+            invocations.add(new io.kairo.api.tool.ToolInvocation(toolName, args));
+        }
+
+        return reactor.core.publisher.Flux.fromIterable(invocations)
+                .flatMap(inv -> session.toolExecutor().execute(inv.toolName(), inv.input())
+                        .map(result -> {
+                            Map<String, Object> entry = new LinkedHashMap<>();
+                            entry.put("tool", inv.toolName());
+                            entry.put("success", !result.isError());
+                            entry.put("content", result.content());
+                            return entry;
+                        })
+                        .onErrorResume(e -> Mono.just(Map.<String, Object>of(
+                                "tool", inv.toolName(), "success", false, "content", e.getMessage()))))
+                .collectList()
+                .map(results -> {
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("total", results.size());
+                    resp.put("results", results);
+                    return resp;
+                });
+    }
+
     @GetMapping("/context")
     public Map<String, Object> getContext() {
         Map<String, Object> result = new LinkedHashMap<>();

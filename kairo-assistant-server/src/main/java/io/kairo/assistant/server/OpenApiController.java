@@ -337,6 +337,16 @@ public class OpenApiController {
                         "description", "Tool execution result",
                         "content", jsonContent("ToolExecuteResponse"))))));
 
+        paths.put("/api/tools/batch", Map.of("post", Map.of(
+                "summary", "Batch Execute Tools",
+                "description", "Execute multiple tools in parallel and return all results",
+                "tags", List.of("tools"),
+                "requestBody", Map.of("required", true,
+                        "content", jsonContent("BatchToolRequest")),
+                "responses", Map.of("200", Map.of(
+                        "description", "Batch results",
+                        "content", jsonContent("BatchToolResponse"))))));
+
         paths.put("/api/context", Map.of(
                 "get", endpoint("Get Context",
                         "Returns the agent conversation history with truncated previews", "ContextResponse"),
@@ -617,6 +627,13 @@ public class OpenApiController {
                 "tool", prop("string", "Executed tool name"),
                 "success", prop("boolean", "Whether the tool succeeded"),
                 "content", prop("string", "Tool output content"))));
+
+        schemas.put("BatchToolRequest", objectSchema(Map.of(
+                "calls", prop("array", "Array of {tool, args} objects to execute in parallel"))));
+
+        schemas.put("BatchToolResponse", objectSchema(Map.of(
+                "total", prop("integer", "Number of tool results"),
+                "results", prop("array", "Array of {tool, success, content} results"))));
 
         schemas.put("ContextResponse", objectSchema(Map.of(
                 "state", prop("string", "Agent state"),
