@@ -113,6 +113,9 @@ public class OpenApiController {
         paths.put("/api/analytics/endpoints", Map.of("get", endpoint(
                 "Endpoint Analytics", "Returns per-endpoint request counts", "EndpointAnalytics")));
 
+        paths.put("/api/analytics/tools", Map.of("get", endpoint(
+                "Tool Analytics", "Returns per-tool call counts and statistics", "ToolAnalytics")));
+
         paths.put("/api/tools/history", Map.of("get", endpoint(
                 "Tool History", "Returns recent tool call history", "ToolHistory")));
 
@@ -459,6 +462,11 @@ public class OpenApiController {
 
         schemas.put("EndpointAnalytics", objectSchema(Map.of(
                 "endpoints", prop("object", "Map of endpoint to request count"))));
+
+        schemas.put("ToolAnalytics", objectSchema(Map.of(
+                "totalToolCalls", prop("integer", "Total tool invocations across all tools"),
+                "uniqueToolsUsed", prop("integer", "Number of distinct tools called"),
+                "tools", prop("object", "Map of tool name to call count"))));
 
         schemas.put("ToolExecuteRequest", objectSchema(Map.of(
                 "tool", prop("string", "Tool name to execute"),

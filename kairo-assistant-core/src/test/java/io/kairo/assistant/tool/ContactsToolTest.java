@@ -44,4 +44,40 @@ class ContactsToolTest {
         ToolResult r = tool.execute(Map.of("action", "list"), noStore).block();
         assertThat(r.isError()).isTrue();
     }
+
+    @Test
+    void updateContactFields() {
+        tool.execute(Map.of("action", "add", "name", "Charlie", "email", "old@mail.com"), ctx).block();
+        ToolResult list = tool.execute(Map.of("action", "list"), ctx).block();
+        String id = extractId(list.content());
+
+        ToolResult update = tool.execute(
+                Map.of("action", "update", "id", id, "email", "new@mail.com"), ctx).block();
+        assertThat(update).isNotNull();
+        assertThat(update.isError()).isFalse();
+        assertThat(update.content()).contains("Updated");
+
+        ToolResult after = tool.execute(Map.of("action", "list"), ctx).block();
+        assertThat(after.content()).contains("new@mail.com");
+    }
+
+    @Test
+    void updateNonexistentIdErrors() {
+        ToolResult r = tool.execute(
+                Map.of("action", "update", "id", "contact:zzz", "name", "Nobody"), ctx).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("not found");
+    }
+
+    @Test
+    void updateRequiresId() {
+        ToolResult r = tool.execute(Map.of("action", "update", "name", "X"), ctx).block();
+        assertThat(r.isError()).isTrue();
+    }
+
+    private String extractId(String content) {
+        int start = content.indexOf('[') + 1;
+        int end = content.indexOf(']');
+        return content.substring(start, end);
+    }
 }

@@ -78,6 +78,25 @@ public class StatusController {
         return result;
     }
 
+    @GetMapping("/health/live")
+    public Map<String, Object> liveness() {
+        return Map.of("status", "ok");
+    }
+
+    @GetMapping("/health/ready")
+    public Map<String, Object> readiness() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        boolean toolsReady = !session.toolRegistry().getAll().isEmpty();
+        boolean agentReady = session.agent() != null;
+        boolean allReady = toolsReady && agentReady;
+
+        result.put("status", allReady ? "ok" : "not_ready");
+        result.put("checks", Map.of(
+                "agent", agentReady ? "ok" : "not_ready",
+                "tools", toolsReady ? "ok" : "not_ready"));
+        return result;
+    }
+
     @GetMapping("/health/detailed")
     public Map<String, Object> detailedHealth() {
         Map<String, Object> result = new LinkedHashMap<>();

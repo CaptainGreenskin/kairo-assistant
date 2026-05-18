@@ -91,6 +91,22 @@ class StatusControllerTest {
     }
 
     @Test
+    void livenessReturnsOk() {
+        var result = controller.liveness();
+        assertEquals("ok", result.get("status"));
+    }
+
+    @Test
+    void readinessReturnsOkWhenReady() {
+        var result = controller.readiness();
+        assertEquals("ok", result.get("status"));
+        @SuppressWarnings("unchecked")
+        var checks = (Map<String, String>) result.get("checks");
+        assertEquals("ok", checks.get("agent"));
+        assertEquals("ok", checks.get("tools"));
+    }
+
+    @Test
     void toolsReturnsRegisteredTools() {
         var tools = controller.tools();
         assertFalse(tools.isEmpty());

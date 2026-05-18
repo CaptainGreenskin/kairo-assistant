@@ -23,7 +23,8 @@ import reactor.core.publisher.Mono;
         name = "contacts",
         description =
                 "Manage a personal contact list. Actions: add (name + optional email/phone/notes), "
-                        + "search (by name or keyword), list (all contacts), delete (by ID).",
+                        + "search (by name or keyword), list (all contacts), update (modify fields by ID), "
+                        + "delete (by ID).",
         category = ToolCategory.INFORMATION,
         sideEffect = ToolSideEffect.WRITE)
 public class ContactsTool implements SyncTool {
@@ -36,13 +37,13 @@ public class ContactsTool implements SyncTool {
     public JsonSchema inputSchema() {
         Map<String, JsonSchema> props = new LinkedHashMap<>();
         props.put("action", new JsonSchema("string", null, null,
-                "Action: add, search, list, delete."));
+                "Action: add, search, list, update, delete."));
         props.put("name", new JsonSchema("string", null, null, "Contact name."));
         props.put("email", new JsonSchema("string", null, null, "Email address."));
         props.put("phone", new JsonSchema("string", null, null, "Phone number."));
         props.put("notes", new JsonSchema("string", null, null, "Additional notes."));
         props.put("query", new JsonSchema("string", null, null, "Search keyword."));
-        props.put("id", new JsonSchema("string", null, null, "Contact ID for delete."));
+        props.put("id", new JsonSchema("string", null, null, "Contact ID for update/delete."));
         return new JsonSchema("object", props, List.of("action"), null);
     }
 
@@ -61,6 +62,7 @@ public class ContactsTool implements SyncTool {
             case "add" -> doAdd(args, store);
             case "search" -> doSearch(args, store);
             case "list" -> doList(store);
+            case "update" -> doUpdate(args, store);
             case "delete" -> doDelete(args, store);
             default -> Mono.just(ToolResult.error("contacts", "Unknown action: " + action));
         };
@@ -127,6 +129,40 @@ public class ContactsTool implements SyncTool {
                     return ToolResult.success("contacts",
                             items.size() + " contacts:\n" + String.join("\n\n", items));
                 });
+    }
+
+    private Mono<ToolResult> doUpdate(Map<String, Object> args, MemoryStore store) {
+        String id = (String) args.get("id");
+        if (id == null || id.isBlank()) {
+            return Mono.just(ToolResult.error("contacts", "'id' required for update"));
+        }
+
+        return store.get(id)
+                .flatMap(entry -> {
+                    Map<String, Object> meta = new HashMap<>(entry.metadata());
+                    String name = args.get("name") instanceof String s ? s : (String) meta.get("name");
+                    if (args.get("email") instanceof String s) meta.put("email", s);
+                    if (args.get("phone") instanceof String s) meta.put("phone", s);
+                    if (args.get("name") instanceof String s) meta.put("name", s);
+
+                    StringBuilder content = new StringBuilder(name);
+                    Object email = meta.get("email");
+                    Object phone = meta.get("phone");
+                    if (email != null) content.append("\nEmail: ").append(email);
+                    if (phone != null) content.append("\nPhone: ").append(phone);
+                    String notes = args.get("notes") instanceof String s ? s : null;
+                    if (notes != null) content.append("\nNotes: ").append(notes);
+
+                    MemoryEntry updated = new MemoryEntry(
+                            entry.id(), entry.agentId(), content.toString(), entry.rawContent(),
+                            entry.scope(), entry.importance(), entry.embedding(), entry.tags(),
+                            entry.timestamp(), meta);
+
+                    return store.save(updated)
+                            .map(saved -> ToolResult.success("contacts",
+                                    "Updated contact: " + name + " (id=" + id + ")"));
+                })
+                .defaultIfEmpty(ToolResult.error("contacts", "Contact not found: " + id));
     }
 
     private Mono<ToolResult> doDelete(Map<String, Object> args, MemoryStore store) {
