@@ -3275,12 +3275,12 @@
         }
 
         // Page visibility & notification badge
-        let unreadCount = 0;
+        let titleUnreadCount = 0;
         const originalTitle = document.title;
 
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                unreadCount = 0;
+                titleUnreadCount = 0;
                 document.title = originalTitle;
             }
         });
@@ -3288,8 +3288,8 @@
         function notifyNewMessage(responseText) {
             playNotifSound();
             if (document.hidden) {
-                unreadCount++;
-                document.title = `(${unreadCount}) ${originalTitle}`;
+                titleUnreadCount++;
+                document.title = `(${titleUnreadCount}) ${originalTitle}`;
                 if (appSettings.desktopNotif && Notification.permission === 'granted') {
                     const preview = responseText
                         ? responseText.substring(0, 120).replace(/\n/g, ' ')

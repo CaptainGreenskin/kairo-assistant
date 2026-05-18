@@ -105,6 +105,10 @@ public record AssistantConfig(
         }
 
         private String resolveBaseUrl(String provider) {
+            String envUrl = System.getenv("KAIRO_BASE_URL");
+            if (envUrl != null && !envUrl.isBlank()) {
+                return envUrl;
+            }
             return switch (provider) {
                 case "glm" -> "https://open.bigmodel.cn/api/paas/v4";
                 case "minimax" -> "https://api.minimax.chat/v1";

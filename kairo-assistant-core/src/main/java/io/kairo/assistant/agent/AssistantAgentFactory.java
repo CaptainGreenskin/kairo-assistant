@@ -160,10 +160,11 @@ public final class AssistantAgentFactory {
         try {
             Class<?> providerClass = Class.forName(className);
             if (config.apiBaseUrl() != null && !config.apiBaseUrl().isBlank()) {
+                String chatPath = resolveChatCompletionsPath(config.apiBaseUrl());
                 return (io.kairo.api.model.ModelProvider)
                         providerClass
-                                .getConstructor(String.class, String.class)
-                                .newInstance(config.apiKey(), config.apiBaseUrl());
+                                .getConstructor(String.class, String.class, String.class)
+                                .newInstance(config.apiKey(), config.apiBaseUrl(), chatPath);
             }
             return (io.kairo.api.model.ModelProvider)
                     providerClass
@@ -175,6 +176,13 @@ public final class AssistantAgentFactory {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create ModelProvider: " + provider, e);
         }
+    }
+
+    private static String resolveChatCompletionsPath(String baseUrl) {
+        if (baseUrl.matches(".*/v\\d+/?$")) {
+            return "/chat/completions";
+        }
+        return "/v1/chat/completions";
     }
 
     private static void registerAllTools(DefaultToolRegistry registry) {
