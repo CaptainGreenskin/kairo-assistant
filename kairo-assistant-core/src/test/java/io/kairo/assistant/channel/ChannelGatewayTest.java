@@ -1,9 +1,9 @@
 package io.kairo.assistant.channel;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class ChannelGatewayTest {
 
@@ -11,8 +11,7 @@ class ChannelGatewayTest {
     void truncateShortString() throws Exception {
         Method truncate = ChannelGateway.class.getDeclaredMethod("truncate", String.class, int.class);
         truncate.setAccessible(true);
-
-        assertEquals("hello", truncate.invoke(null, "hello", 100));
+        assertThat(truncate.invoke(null, "hello", 100)).isEqualTo("hello");
     }
 
     @Test
@@ -22,8 +21,8 @@ class ChannelGatewayTest {
 
         String input = "a".repeat(150);
         String result = (String) truncate.invoke(null, input, 100);
-        assertEquals(103, result.length());
-        assertTrue(result.endsWith("..."));
+        assertThat(result).hasSize(103);
+        assertThat(result).endsWith("...");
     }
 
     @Test
@@ -33,12 +32,39 @@ class ChannelGatewayTest {
 
         String input = "a".repeat(100);
         String result = (String) truncate.invoke(null, input, 100);
-        assertEquals(100, result.length());
-        assertFalse(result.endsWith("..."));
+        assertThat(result).hasSize(100);
+        assertThat(result).doesNotEndWith("...");
     }
 
     @Test
     void constructorAcceptsNullChannel() {
-        assertDoesNotThrow(() -> new ChannelGateway(null, null));
+        assertThat(new ChannelGateway(null, null)).isNotNull();
+    }
+
+    @Test
+    void truncateEmpty() throws Exception {
+        Method truncate = ChannelGateway.class.getDeclaredMethod("truncate", String.class, int.class);
+        truncate.setAccessible(true);
+        assertThat(truncate.invoke(null, "", 100)).isEqualTo("");
+    }
+
+    @Test
+    void truncateOneBeyondLimit() throws Exception {
+        Method truncate = ChannelGateway.class.getDeclaredMethod("truncate", String.class, int.class);
+        truncate.setAccessible(true);
+
+        String input = "a".repeat(101);
+        String result = (String) truncate.invoke(null, input, 100);
+        assertThat(result).endsWith("...");
+    }
+
+    @Test
+    void truncatePreservesPrefix() throws Exception {
+        Method truncate = ChannelGateway.class.getDeclaredMethod("truncate", String.class, int.class);
+        truncate.setAccessible(true);
+
+        String input = "ABC" + "x".repeat(200);
+        String result = (String) truncate.invoke(null, input, 50);
+        assertThat(result).startsWith("ABC");
     }
 }

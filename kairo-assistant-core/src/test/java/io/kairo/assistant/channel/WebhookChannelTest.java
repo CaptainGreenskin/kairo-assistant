@@ -54,4 +54,47 @@ class WebhookChannelTest {
         assertThat(ack).isNotNull();
         assertThat(ack.success()).isFalse();
     }
+
+    @Test
+    void doubleStartThrows() {
+        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
+        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
+        channel.start(handler).block();
+        try {
+            channel.start(handler).block();
+            assertThat(true).as("should have thrown").isFalse();
+        } catch (IllegalStateException e) {
+            assertThat(e.getMessage()).contains("already started");
+        } finally {
+            channel.stop().block();
+        }
+    }
+
+    @Test
+    void injectInboundWithAttributes() {
+        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
+        AtomicReference<String> received = new AtomicReference<>();
+        ChannelInboundHandler handler = msg -> {
+            received.set(msg.content());
+            return Mono.just(ChannelAck.ok());
+        };
+        channel.start(handler).block();
+        ChannelAck ack = channel.injectInbound("s1", "attr msg",
+                java.util.Map.of("key", "val")).block();
+        assertThat(ack.success()).isTrue();
+        assertThat(received.get()).isEqualTo("attr msg");
+        channel.stop().block();
+    }
+
+    @Test
+    void stopAndRestartWorks() {
+        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
+        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
+        channel.start(handler).block();
+        channel.stop().block();
+        channel.start(handler).block();
+        ChannelAck ack = channel.injectInbound("s1", "restarted").block();
+        assertThat(ack.success()).isTrue();
+        channel.stop().block();
+    }
 }
