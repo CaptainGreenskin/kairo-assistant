@@ -47,4 +47,56 @@ class AssistantConfigTest {
         assertThat(config.dataDir())
                 .isEqualTo(System.getProperty("user.home") + "/.kairo-assistant");
     }
+
+    @Test
+    void apiBaseUrlAutoResolvedForGlm() {
+        AssistantConfig config = AssistantConfig.builder()
+                .modelProvider("glm").apiKey("glm-key").build();
+        assertThat(config.apiBaseUrl()).contains("bigmodel.cn");
+    }
+
+    @Test
+    void apiBaseUrlAutoResolvedForDeepseek() {
+        AssistantConfig config = AssistantConfig.builder()
+                .modelProvider("deepseek").apiKey("ds-key").build();
+        assertThat(config.apiBaseUrl()).contains("deepseek.com");
+    }
+
+    @Test
+    void apiBaseUrlNullForAnthropic() {
+        AssistantConfig config = AssistantConfig.builder()
+                .modelProvider("anthropic").apiKey("ak").build();
+        assertThat(config.apiBaseUrl()).isNull();
+    }
+
+    @Test
+    void envMapDefaultsToEmpty() {
+        AssistantConfig config = AssistantConfig.builder().apiKey("k").build();
+        assertThat(config.env()).isEmpty();
+    }
+
+    @Test
+    void envMapIsConfigurable() {
+        AssistantConfig config = AssistantConfig.builder()
+                .apiKey("k")
+                .env(java.util.Map.of("KEY", "VALUE"))
+                .build();
+        assertThat(config.env()).containsEntry("KEY", "VALUE");
+    }
+
+    @Test
+    void timeoutIsConfigurable() {
+        AssistantConfig config = AssistantConfig.builder()
+                .apiKey("k")
+                .timeout(java.time.Duration.ofSeconds(30))
+                .build();
+        assertThat(config.timeout()).isEqualTo(java.time.Duration.ofSeconds(30));
+    }
+
+    @Test
+    void tokenBudgetIsConfigurable() {
+        AssistantConfig config = AssistantConfig.builder()
+                .apiKey("k").tokenBudget(256_000).build();
+        assertThat(config.tokenBudget()).isEqualTo(256_000);
+    }
 }

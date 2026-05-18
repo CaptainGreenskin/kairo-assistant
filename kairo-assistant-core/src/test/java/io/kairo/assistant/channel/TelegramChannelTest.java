@@ -46,4 +46,26 @@ class TelegramChannelTest {
             channel.stop().block();
         }
     }
+
+    @Test
+    void channelIdMatchesConstruction() {
+        TelegramChannel channel = new TelegramChannel("custom-id", "token");
+        assertThat(channel.id()).isEqualTo("custom-id");
+    }
+
+    @Test
+    void stopWhenNotStartedDoesNotThrow() {
+        TelegramChannel channel = new TelegramChannel("tg-test", "fake-token");
+        channel.stop().block();
+    }
+
+    @Test
+    void stopAndRestartWorks() {
+        TelegramChannel channel = new TelegramChannel("tg-test", "fake-token");
+        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
+        channel.start(handler).block();
+        channel.stop().block();
+        channel.start(handler).block();
+        channel.stop().block();
+    }
 }
