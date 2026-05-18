@@ -409,6 +409,54 @@ public class StatusController {
         return result;
     }
 
+    @GetMapping("/analytics/tokens")
+    public Map<String, Object> tokenAnalytics() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        long input = metrics.inputTokens();
+        long output = metrics.outputTokens();
+        long total = input + output;
+        result.put("inputTokens", input);
+        result.put("outputTokens", output);
+        result.put("totalTokens", total);
+
+        long msgs = metrics.messageCount();
+        result.put("totalMessages", msgs);
+        if (msgs > 0) {
+            result.put("avgTokensPerMessage", total / msgs);
+        }
+
+        double inputCostPer1M = 3.0;
+        double outputCostPer1M = 15.0;
+        double estimatedCost = (input / 1_000_000.0) * inputCostPer1M
+                + (output / 1_000_000.0) * outputCostPer1M;
+        result.put("estimatedCostUsd", Math.round(estimatedCost * 10000.0) / 10000.0);
+        result.put("pricing", Map.of(
+                "model", session.config().modelName(),
+                "inputPer1MTokens", inputCostPer1M,
+                "outputPer1MTokens", outputCostPer1M,
+                "note", "Estimates based on Claude Sonnet pricing; actual may vary"));
+        return result;
+    }
+
+    @GetMapping("/analytics/latency")
+    public Map<String, Object> latencyAnalytics() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("percentiles", metrics.durationPercentiles());
+
+        long calls = 0;
+        long totalDuration = 0;
+        if (session.toolExecutor() instanceof ToolCallLogger logger) {
+            calls = logger.totalCalls();
+            totalDuration = logger.totalDurationMs();
+        }
+        result.put("totalAgentCalls", calls);
+        result.put("totalDurationMs", totalDuration);
+        if (calls > 0) {
+            result.put("avgDurationMs", totalDuration / calls);
+        }
+        return result;
+    }
+
     @PostMapping("/summarize")
     public Mono<Map<String, Object>> summarize(@RequestBody Map<String, String> body) {
         String sessionId = body.get("sessionId");

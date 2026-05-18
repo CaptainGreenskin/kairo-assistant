@@ -127,6 +127,12 @@ public class OpenApiController {
         paths.put("/api/analytics/tools", Map.of("get", endpoint(
                 "Tool Analytics", "Returns per-tool call counts and statistics", "ToolAnalytics")));
 
+        paths.put("/api/analytics/tokens", Map.of("get", endpoint(
+                "Token Analytics", "Returns token usage breakdown with cost estimation", "TokenAnalytics")));
+
+        paths.put("/api/analytics/latency", Map.of("get", endpoint(
+                "Latency Analytics", "Returns agent call latency percentiles and averages", "LatencyAnalytics")));
+
         paths.put("/api/tools/history", Map.of("get", endpoint(
                 "Tool History", "Returns recent tool call history", "ToolHistory")));
 
@@ -485,6 +491,21 @@ public class OpenApiController {
                 "totalToolCalls", prop("integer", "Total tool invocations across all tools"),
                 "uniqueToolsUsed", prop("integer", "Number of distinct tools called"),
                 "tools", prop("object", "Map of tool name to call count"))));
+
+        schemas.put("TokenAnalytics", objectSchema(Map.of(
+                "inputTokens", prop("integer", "Total input tokens consumed"),
+                "outputTokens", prop("integer", "Total output tokens generated"),
+                "totalTokens", prop("integer", "Total tokens (input + output)"),
+                "totalMessages", prop("integer", "Total messages processed"),
+                "avgTokensPerMessage", prop("integer", "Average tokens per message"),
+                "estimatedCostUsd", prop("number", "Estimated cost in USD"),
+                "pricing", prop("object", "Pricing model details"))));
+
+        schemas.put("LatencyAnalytics", objectSchema(Map.of(
+                "percentiles", prop("object", "p50/p90/p99 latency in ms"),
+                "totalAgentCalls", prop("integer", "Total agent calls"),
+                "totalDurationMs", prop("integer", "Total duration in ms"),
+                "avgDurationMs", prop("integer", "Average call duration in ms"))));
 
         schemas.put("ToolExecuteRequest", objectSchema(Map.of(
                 "tool", prop("string", "Tool name to execute"),

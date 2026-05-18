@@ -481,6 +481,51 @@ class StatusControllerTest {
         assertEquals(1L, tools.get("web_fetch"));
     }
 
+    @Test
+    void tokenAnalyticsReturnsZeroByDefault() {
+        var result = controller.tokenAnalytics();
+        assertEquals(0L, result.get("inputTokens"));
+        assertEquals(0L, result.get("outputTokens"));
+        assertEquals(0L, result.get("totalTokens"));
+        assertEquals(0L, result.get("totalMessages"));
+        assertNotNull(result.get("estimatedCostUsd"));
+        assertNotNull(result.get("pricing"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void tokenAnalyticsWithUsageData() {
+        var metricsWithData = new MetricsCollector();
+        metricsWithData.recordTokenUsage(1000, 500);
+        metricsWithData.recordMessage();
+        metricsWithData.recordMessage();
+
+        var config = TestFixtures.defaultConfig();
+        var skillRegistry = AssistantSkills.createRegistry();
+        var session = new AssistantSession(
+                new TestFixtures.StubAgent(), toolRegistry,
+                new TestFixtures.StubToolExecutor(), new InMemoryStore(),
+                new TestFixtures.StubCronScheduler(), skillRegistry,
+                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                config);
+        var ctrl = new StatusController(session, metricsWithData, new SessionManager(session));
+        var result = ctrl.tokenAnalytics();
+
+        assertEquals(1000L, result.get("inputTokens"));
+        assertEquals(500L, result.get("outputTokens"));
+        assertEquals(1500L, result.get("totalTokens"));
+        assertEquals(2L, result.get("totalMessages"));
+        assertEquals(750L, result.get("avgTokensPerMessage"));
+    }
+
+    @Test
+    void latencyAnalyticsReturnsData() {
+        var result = controller.latencyAnalytics();
+        assertNotNull(result.get("percentiles"));
+        assertNotNull(result.get("totalAgentCalls"));
+        assertNotNull(result.get("totalDurationMs"));
+    }
+
     private StatusController controllerWithDataDir(Path dataDir) {
         var config = AssistantConfig.builder()
                 .apiKey("test-key")
