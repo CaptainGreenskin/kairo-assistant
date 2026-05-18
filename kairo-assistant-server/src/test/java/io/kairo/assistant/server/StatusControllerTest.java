@@ -132,6 +132,18 @@ class StatusControllerTest {
     }
 
     @Test
+    void toolCategoriesGroupsByCategory() {
+        var result = controller.toolCategories();
+        assertNotNull(result);
+        assertTrue(result.containsKey("GENERAL"));
+        @SuppressWarnings("unchecked")
+        var general = (Map<String, Object>) result.get("GENERAL");
+        assertNotNull(general.get("count"));
+        assertTrue((Integer) general.get("count") >= 1);
+        assertNotNull(general.get("tools"));
+    }
+
+    @Test
     void metricsReturnsPrometheus() {
         String metrics = controller.metrics();
         assertNotNull(metrics);

@@ -54,6 +54,9 @@ public class OpenApiController {
         paths.put("/api/tools", Map.of("get", endpoint(
                 "List Tools", "Returns all registered tools with metadata", "ToolList")));
 
+        paths.put("/api/tools/categories", Map.of("get", endpoint(
+                "Tool Categories", "Returns tools grouped by category with counts", "ToolCategories")));
+
         paths.put("/api/tools/{name}", Map.of("get", Map.of(
                 "summary", "Tool Detail",
                 "description", "Returns full detail of a single tool including input schema",
@@ -369,6 +372,13 @@ public class OpenApiController {
                         "description", prop("string", "Tool description"),
                         "category", prop("string", "Tool category"),
                         "sideEffect", prop("string", "Side effect level")))));
+
+        schemas.put("ToolCategories", objectSchema(Map.of(
+                "GENERAL", prop("object", "Category with count and tool list"),
+                "INFORMATION", prop("object", "Category with count and tool list"),
+                "FILE_AND_CODE", prop("object", "Category with count and tool list"),
+                "AGENT_AND_TASK", prop("object", "Category with count and tool list"),
+                "EXTERNAL", prop("object", "Category with count and tool list"))));
 
         schemas.put("ToolDetail", objectSchema(Map.of(
                 "name", prop("string", "Tool name"),

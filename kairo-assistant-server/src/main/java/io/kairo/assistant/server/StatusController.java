@@ -181,6 +181,26 @@ public class StatusController {
                 .toList();
     }
 
+    @GetMapping("/tools/categories")
+    public Map<String, Object> toolCategories() {
+        Map<String, List<Map<String, String>>> grouped = new LinkedHashMap<>();
+        session.toolRegistry().getAll().stream()
+                .sorted((a, b) -> a.name().compareTo(b.name()))
+                .forEach(tool -> {
+                    String cat = tool.category().name();
+                    grouped.computeIfAbsent(cat, k -> new java.util.ArrayList<>())
+                            .add(Map.of("name", tool.name(), "description", tool.description()));
+                });
+        Map<String, Object> result = new LinkedHashMap<>();
+        grouped.forEach((cat, tools) -> {
+            Map<String, Object> catInfo = new LinkedHashMap<>();
+            catInfo.put("count", tools.size());
+            catInfo.put("tools", tools);
+            result.put(cat, catInfo);
+        });
+        return result;
+    }
+
     @GetMapping("/tools/{name}")
     public Map<String, Object> toolDetail(@PathVariable String name) {
         return session.toolRegistry().getAll().stream()
