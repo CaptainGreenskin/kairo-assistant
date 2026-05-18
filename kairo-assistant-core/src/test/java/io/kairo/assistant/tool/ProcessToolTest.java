@@ -21,6 +21,14 @@ class ProcessToolTest {
     }
 
     @Test
+    void listRespectsLimit() {
+        ToolResult r = tool.execute(Map.of("action", "list", "limit", 3), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("PID=");
+    }
+
+    @Test
     void searchByName() {
         ToolResult r = tool.execute(Map.of("action", "search", "query", "java"), ctx).block();
         assertThat(r).isNotNull();
@@ -31,6 +39,16 @@ class ProcessToolTest {
     void searchRequiresQuery() {
         ToolResult r = tool.execute(Map.of("action", "search"), ctx).block();
         assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("'query' required");
+    }
+
+    @Test
+    void searchNoMatchReturnsMessage() {
+        ToolResult r = tool.execute(
+                Map.of("action", "search", "query", "xyz_nonexistent_process_12345"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("No processes match");
     }
 
     @Test
@@ -39,6 +57,7 @@ class ProcessToolTest {
         ToolResult r = tool.execute(Map.of("action", "info", "pid", pid), ctx).block();
         assertThat(r.isError()).isFalse();
         assertThat(r.content()).contains("PID: " + pid);
+        assertThat(r.content()).contains("Alive: true");
     }
 
     @Test
@@ -68,5 +87,24 @@ class ProcessToolTest {
         assertThat(r).isNotNull();
         assertThat(r.isError()).isFalse();
         assertThat(r.content()).contains("processes");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).isEmpty();
+        assertThat(schema.properties()).containsKey("action");
+        assertThat(schema.properties()).containsKey("query");
+        assertThat(schema.properties()).containsKey("pid");
+        assertThat(schema.properties()).containsKey("limit");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = ProcessTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("process");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
     }
 }

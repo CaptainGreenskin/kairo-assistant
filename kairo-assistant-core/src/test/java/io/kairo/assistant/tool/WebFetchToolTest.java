@@ -37,6 +37,19 @@ class WebFetchToolTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
+        server.createContext("/json", exchange -> {
+            byte[] body = "{\"key\":\"value\"}".getBytes();
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.createContext("/error500", exchange -> {
+            byte[] body = "internal error".getBytes();
+            exchange.sendResponseHeaders(500, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
         server.start();
         baseUrl = "http://localhost:" + server.getAddress().getPort();
     }
@@ -50,17 +63,20 @@ class WebFetchToolTest {
     void urlRequired() {
         ToolResult r = tool.execute(Map.of(), ctx).block();
         assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("url");
+    }
+
+    @Test
+    void blankUrlErrors() {
+        ToolResult r = tool.execute(Map.of("url", "  "), ctx).block();
+        assertThat(r.isError()).isTrue();
     }
 
     @Test
     void invalidUrlErrors() {
         ToolResult r = tool.execute(Map.of("url", "not-a-url"), ctx).block();
         assertThat(r.isError()).isTrue();
-    }
-
-    @Test
-    void hasInputSchema() {
-        assertThat(tool.inputSchema().properties()).containsKey("url");
+        assertThat(r.content()).contains("Fetch failed");
     }
 
     @Test
@@ -80,6 +96,13 @@ class WebFetchToolTest {
     }
 
     @Test
+    void metadataIncludesContentType() {
+        ToolResult r = tool.execute(Map.of("url", baseUrl + "/json"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.metadata().get("contentType").toString()).contains("application/json");
+    }
+
+    @Test
     void largeResponseIsTruncated() {
         ToolResult r = tool.execute(Map.of("url", baseUrl + "/large"), ctx).block();
         assertThat(r).isNotNull();
@@ -95,5 +118,40 @@ class WebFetchToolTest {
                 ctx).block();
         assertThat(r).isNotNull();
         assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void multipleHeaders() {
+        ToolResult r = tool.execute(
+                Map.of("url", baseUrl + "/hello", "headers", "Accept: text/plain\nX-Test: foo"),
+                ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void serverErrorReturnsContent() {
+        ToolResult r = tool.execute(Map.of("url", baseUrl + "/error500"), ctx).block();
+        assertThat(r).isNotNull();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.metadata()).containsEntry("statusCode", 500);
+        assertThat(r.content()).contains("internal error");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("url");
+        assertThat(schema.properties()).containsKey("url");
+        assertThat(schema.properties()).containsKey("headers");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = WebFetchTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("web_fetch");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
     }
 }
