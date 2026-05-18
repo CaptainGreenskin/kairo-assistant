@@ -148,6 +148,35 @@ class AssistantSessionTest {
         assertThat(session.config().dataDir()).isEqualTo("/tmp/test");
     }
 
+    @Test
+    void dependenciesMapSizeIsTwo() {
+        var session = createSession();
+        var deps = session.dependencies();
+        assertThat(deps).hasSize(2);
+        assertThat(deps).containsOnlyKeys("memoryStore", "cronScheduler");
+    }
+
+    @Test
+    void skillRegistryAccessibleFromRecord() {
+        var session = createSession();
+        assertThat(session.skillRegistry()).isNotNull();
+        assertThat(session.pluginManager()).isNotNull();
+    }
+
+    @Test
+    void doubleStopDoesNotThrow() {
+        var session = createSession();
+        session.start();
+        session.stop();
+        session.stop();
+    }
+
+    @Test
+    void agentIdAccessible() {
+        var session = createSession();
+        assertThat(session.agent().id()).isEqualTo("test-agent");
+    }
+
     private AssistantSession createSession() {
         var config = AssistantConfig.builder().apiKey("test").build();
         return createSessionWith(config);

@@ -84,6 +84,37 @@ class PathTraversalPolicyTest {
         assertFalse(PathTraversalPolicy.hasTraversalComponent("file..name"));
     }
 
+    @Test
+    void allowsBlankPath() {
+        var policy = new PathTraversalPolicy(tempDir);
+        var ctx = new GuardrailContext(
+                GuardrailPhase.PRE_TOOL, "assistant", "read_file",
+                new GuardrailPayload.ToolInput("read_file", Map.of("file_path", "")),
+                Map.of());
+        var decision = policy.evaluate(ctx).block();
+        assertNotNull(decision);
+        assertEquals(GuardrailDecision.Action.ALLOW, decision.action());
+    }
+
+    @Test
+    void alternatePathKey() {
+        var policy = new PathTraversalPolicy(tempDir);
+        var ctx = new GuardrailContext(
+                GuardrailPhase.PRE_TOOL, "assistant", "write_file",
+                new GuardrailPayload.ToolInput("write_file", Map.of("path", "../../etc/passwd")),
+                Map.of());
+        var decision = policy.evaluate(ctx).block();
+        assertNotNull(decision);
+        assertEquals(GuardrailDecision.Action.DENY, decision.action());
+    }
+
+    @Test
+    void policyNameAndOrder() {
+        var policy = new PathTraversalPolicy();
+        assertEquals("PathTraversalPolicy", policy.name());
+        assertEquals(-85, policy.order());
+    }
+
     private GuardrailContext fileToolContext(String tool, String path) {
         return new GuardrailContext(
                 GuardrailPhase.PRE_TOOL, "assistant", tool,

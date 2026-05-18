@@ -67,4 +67,27 @@ class AssistantSkillsTest {
         assertThat(registry.get("translate")).isPresent();
         assertThat(registry.get("translate").get().triggerConditions()).contains("/translate");
     }
+
+    @Test
+    void webResearchSkillExists() {
+        SkillRegistry registry = AssistantSkills.createRegistry();
+        assertThat(registry.get("web-research")).isPresent();
+        assertThat(registry.get("web-research").get().category()).isEqualTo(SkillCategory.GENERAL);
+    }
+
+    @Test
+    void nonExistentSkillReturnsEmpty() {
+        SkillRegistry registry = AssistantSkills.createRegistry();
+        assertThat(registry.get("non-existent-skill")).isEmpty();
+    }
+
+    @Test
+    void allSkillsHaveNonBlankVersion() {
+        SkillRegistry registry = AssistantSkills.createRegistry();
+        for (SkillDefinition skill : registry.list()) {
+            assertThat(skill.version())
+                    .as("Skill '%s' should have a version", skill.name())
+                    .isNotBlank();
+        }
+    }
 }

@@ -57,4 +57,34 @@ class I18nTest {
         I18n.setLocale("zh");
         assertThat(I18n.locale()).isEqualTo("zh");
     }
+
+    @Test
+    void nullLocaleDefaultsToEnglish() {
+        I18n.setLocale(null);
+        assertThat(I18n.locale()).isEqualTo("en");
+        assertThat(I18n.t("agent.greeting")).contains("Kairo Assistant");
+    }
+
+    @Test
+    void clearCacheReloadsBundle() {
+        I18n.setLocale("en");
+        String first = I18n.t("agent.greeting");
+        I18n.clearCache();
+        String second = I18n.t("agent.greeting");
+        assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void tfWithMultipleArgs() {
+        I18n.setLocale("en");
+        String msg = I18n.tf("error.unknown_action", "deploy");
+        assertThat(msg).contains("deploy");
+    }
+
+    @Test
+    void explicitLocaleOverridesGlobal() {
+        I18n.setLocale("en");
+        String zhGreeting = I18n.t("agent.greeting", "zh");
+        assertThat(zhGreeting).contains("Kairo 助手");
+    }
 }

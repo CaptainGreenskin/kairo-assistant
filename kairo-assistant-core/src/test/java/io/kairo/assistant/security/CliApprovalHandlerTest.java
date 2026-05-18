@@ -78,6 +78,43 @@ class CliApprovalHandlerTest {
         assertTrue(output.contains("SYSTEM_CHANGE"));
     }
 
+    @Test
+    void denyReasonContainsToolName() {
+        var handler = handlerWithInput("n\n");
+        var result = handler.requestApproval(request("dangerous_tool")).block();
+        assertNotNull(result);
+        assertFalse(result.approved());
+        assertTrue(result.reason().contains("dangerous_tool"));
+    }
+
+    @Test
+    void emptyInputDenies() {
+        var handler = handlerWithInput("");
+        var result = handler.requestApproval(request("shell")).block();
+        assertNotNull(result);
+        assertFalse(result.approved());
+    }
+
+    @Test
+    void outputShowsArgs() {
+        var baos = new ByteArrayOutputStream();
+        var out = new PrintStream(baos);
+        var handler = new CliApprovalHandler(new Scanner("y\n"), out);
+
+        handler.requestApproval(
+                new ToolCallRequest("shell", Map.of("command", "rm -rf /"), ToolSideEffect.SYSTEM_CHANGE)).block();
+        String output = baos.toString();
+        assertTrue(output.contains("command"));
+    }
+
+    @Test
+    void unknownInputDefaultsToDeny() {
+        var handler = handlerWithInput("maybe\n");
+        var result = handler.requestApproval(request("shell")).block();
+        assertNotNull(result);
+        assertFalse(result.approved());
+    }
+
     private CliApprovalHandler handlerWithInput(String input) {
         return new CliApprovalHandler(
                 new Scanner(input),

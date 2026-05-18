@@ -86,6 +86,27 @@ class AssistantPluginTest {
         assertThat(manager.plugins()).hasSize(1);
     }
 
+    @Test
+    void nameAndVersionAreRequired() {
+        AssistantPlugin plugin = minimalPlugin("my-plugin", "4.5.6");
+        assertThat(plugin.name()).isEqualTo("my-plugin");
+        assertThat(plugin.version()).isEqualTo("4.5.6");
+    }
+
+    @Test
+    void onUnloadDefaultDoesNotThrow() {
+        AssistantPlugin plugin = minimalPlugin("safe", "1.0");
+        plugin.onLoad(createContext());
+        plugin.onUnload();
+        plugin.onUnload();
+    }
+
+    @Test
+    void contextDataDirAccessible() {
+        var context = createContext();
+        assertThat(context.dataDir()).isEqualTo(Path.of("/tmp"));
+    }
+
     private static AssistantPlugin minimalPlugin(String name, String version) {
         return new AssistantPlugin() {
             @Override public String name() { return name; }

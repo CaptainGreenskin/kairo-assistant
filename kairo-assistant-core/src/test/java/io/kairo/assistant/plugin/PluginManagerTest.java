@@ -125,4 +125,72 @@ class PluginManagerTest {
         });
         assertThat(verified.get()).isTrue();
     }
+
+    @Test
+    void unloadCallsOnUnloadForEachPlugin() {
+        AtomicBoolean unloaded1 = new AtomicBoolean(false);
+        AtomicBoolean unloaded2 = new AtomicBoolean(false);
+        PluginManager manager = new PluginManager(
+                new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp"));
+
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "p1"; }
+            @Override public String version() { return "1.0"; }
+            @Override public void onUnload() { unloaded1.set(true); }
+        });
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "p2"; }
+            @Override public String version() { return "1.0"; }
+            @Override public void onUnload() { unloaded2.set(true); }
+        });
+
+        manager.unloadPlugins();
+        assertThat(unloaded1.get()).isTrue();
+        assertThat(unloaded2.get()).isTrue();
+        assertThat(manager.plugins()).isEmpty();
+    }
+
+    @Test
+    void pluginRegistrationOrderPreserved() {
+        PluginManager manager = new PluginManager(
+                new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp"));
+
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "alpha"; }
+            @Override public String version() { return "1.0"; }
+        });
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "beta"; }
+            @Override public String version() { return "2.0"; }
+        });
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "gamma"; }
+            @Override public String version() { return "3.0"; }
+        });
+
+        assertThat(manager.plugins().get(0).name()).isEqualTo("alpha");
+        assertThat(manager.plugins().get(1).name()).isEqualTo("beta");
+        assertThat(manager.plugins().get(2).name()).isEqualTo("gamma");
+    }
+
+    @Test
+    void pluginVersionAccessible() {
+        PluginManager manager = new PluginManager(
+                new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp"));
+
+        manager.registerPlugin(new AssistantPlugin() {
+            @Override public String name() { return "versioned"; }
+            @Override public String version() { return "3.2.1"; }
+        });
+
+        assertThat(manager.plugins().get(0).version()).isEqualTo("3.2.1");
+    }
+
+    @Test
+    void loadPluginsWithNoServiceProviderIsEmpty() {
+        PluginManager manager = new PluginManager(
+                new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp"));
+        manager.loadPlugins();
+        assertThat(manager.plugins()).isEmpty();
+    }
 }

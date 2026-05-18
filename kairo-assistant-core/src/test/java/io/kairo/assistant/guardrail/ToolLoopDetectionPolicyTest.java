@@ -98,6 +98,34 @@ class ToolLoopDetectionPolicyTest {
         assertEquals(GuardrailDecision.Action.ALLOW, decision.action());
     }
 
+    @Test
+    void policyNameAndOrder() {
+        assertEquals("ToolLoopDetectionPolicy", policy.name());
+        assertEquals(-80, policy.order());
+    }
+
+    @Test
+    void defaultThresholdsAreThreeAndFive() {
+        var defaultPolicy = new ToolLoopDetectionPolicy();
+        var ctx = preToolContext("shell", Map.of("command", "echo"));
+        defaultPolicy.evaluate(ctx).block();
+        defaultPolicy.evaluate(ctx).block();
+        var decision = defaultPolicy.evaluate(ctx).block();
+        assertNotNull(decision);
+        assertEquals(GuardrailDecision.Action.WARN, decision.action());
+    }
+
+    @Test
+    void postToolWithNonToolOutputPayloadAllows() {
+        var ctx = new GuardrailContext(
+                GuardrailPhase.POST_TOOL, "assistant", "shell",
+                new GuardrailPayload.ToolInput("shell", Map.of("command", "ls")),
+                Map.of());
+        var decision = policy.evaluate(ctx).block();
+        assertNotNull(decision);
+        assertEquals(GuardrailDecision.Action.ALLOW, decision.action());
+    }
+
     private GuardrailContext preToolContext(String tool, Map<String, Object> args) {
         return new GuardrailContext(
                 GuardrailPhase.PRE_TOOL, "assistant", tool,
