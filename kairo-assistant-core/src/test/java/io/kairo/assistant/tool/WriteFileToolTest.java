@@ -62,14 +62,72 @@ class WriteFileToolTest {
         ToolResult result = tool.execute(Map.of("content", "hello"), ctx).block();
         assertThat(result).isNotNull();
         assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("path");
     }
 
     @Test
-    void toolAnnotationAndSchema() {
-        var annotation = WriteFileTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
-        assertThat(annotation).isNotNull();
-        assertThat(annotation.name()).isEqualTo("write_file");
-        assertThat(tool.inputSchema()).isNotNull();
-        assertThat(tool.inputSchema().required()).contains("path");
+    void blankPathErrors() {
+        ToolResult result = tool.execute(Map.of("path", "  ", "content", "x"), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void nullContentWritesEmpty(@TempDir Path tmp) throws IOException {
+        Path file = tmp.resolve("null-content.txt");
+        Map<String, Object> args = new java.util.HashMap<>();
+        args.put("path", file.toString());
+        args.put("content", null);
+        ToolResult result = tool.execute(args, ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(Files.readString(file)).isEmpty();
+    }
+
+    @Test
+    void metadataContainsBytes(@TempDir Path tmp) {
+        Path file = tmp.resolve("meta.txt");
+        ToolResult result = tool.execute(
+                Map.of("path", file.toString(), "content", "abc"), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.metadata()).containsEntry("bytes", 3L);
+    }
+
+    @Test
+    void resultMessageContainsByteCount(@TempDir Path tmp) {
+        Path file = tmp.resolve("msg.txt");
+        ToolResult result = tool.execute(
+                Map.of("path", file.toString(), "content", "12345"), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.content()).contains("5 bytes");
+    }
+
+    @Test
+    void unicodeContentCorrectBytes(@TempDir Path tmp) throws IOException {
+        Path file = tmp.resolve("unicode.txt");
+        String content = "你好世界";
+        ToolResult result = tool.execute(
+                Map.of("path", file.toString(), "content", content), ctx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(Files.readString(file)).isEqualTo(content);
+        assertThat(result.content()).contains("12 bytes");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("path", "content");
+        assertThat(schema.properties()).containsKey("path");
+        assertThat(schema.properties()).containsKey("content");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = WriteFileTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("write_file");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.FILE_AND_CODE);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
     }
 }

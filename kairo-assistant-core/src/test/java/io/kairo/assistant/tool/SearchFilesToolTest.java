@@ -85,4 +85,65 @@ class SearchFilesToolTest {
                 Map.of("pattern", "deep content", "path", dir.toString()), ctx).block();
         assertThat(r.content()).contains("deep content");
     }
+
+    @Test
+    void regexPatternSupported(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("regex.txt"), "foo123bar\nfoo456bar\nbaz");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "foo[0-9]", "path", dir.toString()), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("foo123bar");
+        assertThat(r.content()).contains("foo456bar");
+    }
+
+    @Test
+    void multipleFilesMatchShown(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("a.txt"), "common pattern");
+        Files.writeString(dir.resolve("b.txt"), "common pattern here too");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "common pattern", "path", dir.toString()), ctx).block();
+        assertThat(r.content()).contains("a.txt");
+        assertThat(r.content()).contains("b.txt");
+    }
+
+    @Test
+    void maxResultsDefault50(@TempDir Path dir) throws IOException {
+        StringBuilder content = new StringBuilder();
+        for (int i = 0; i < 60; i++) {
+            content.append("line match ").append(i).append("\n");
+        }
+        Files.writeString(dir.resolve("big.txt"), content.toString());
+        ToolResult r = tool.execute(
+                Map.of("pattern", "line match", "path", dir.toString()), ctx).block();
+        long lineCount = r.content().lines().count();
+        assertThat(lineCount).isLessThanOrEqualTo(50);
+    }
+
+    @Test
+    void maxResultsClampedToLimit(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("one.txt"), "single match");
+        ToolResult r = tool.execute(
+                Map.of("pattern", "single match", "path", dir.toString(), "maxResults", 999), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("single match");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("pattern");
+        assertThat(schema.properties()).containsKey("pattern");
+        assertThat(schema.properties()).containsKey("path");
+        assertThat(schema.properties()).containsKey("include");
+        assertThat(schema.properties()).containsKey("maxResults");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = SearchFilesTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("search_files");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.FILE_AND_CODE);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }

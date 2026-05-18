@@ -71,6 +71,35 @@ class TimeToolTest {
     }
 
     @Test
+    void formatContainsDateParts() {
+        ToolResult result = tool.execute(Map.of("timezone", "UTC"), emptyCtx()).block();
+        assertThat(result.content()).matches(".*\\d{4}-\\d{2}-\\d{2}.*");
+        assertThat(result.content()).matches(".*\\d{2}:\\d{2}:\\d{2}.*");
+    }
+
+    @Test
+    void europeLondonTimezone() {
+        ToolResult result = tool.execute(Map.of("timezone", "Europe/London"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+    }
+
+    @Test
+    void emptyArgsReturnsTime() {
+        ToolResult result = tool.execute(Map.of(), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).isNotBlank();
+    }
+
+    @Test
+    void whitespaceTimezoneUsesDefault() {
+        ToolResult result = tool.execute(Map.of("timezone", "   "), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isFalse();
+    }
+
+    @Test
     void inputSchemaHasTimezoneField() {
         var schema = tool.inputSchema();
         assertThat(schema.type()).isEqualTo("object");

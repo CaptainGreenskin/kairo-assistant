@@ -79,4 +79,67 @@ class SessionSearchToolTest {
         ToolResult r = tool.execute(Map.of("query", "scoped search", "scope", "agent"), ctx).block();
         assertThat(r.isError()).isFalse();
     }
+
+    @Test
+    void scopeSessionValid() {
+        store.save(new MemoryEntry("sess1", null, "session scoped data", null,
+                MemoryScope.SESSION, 0.5, null, Set.of(), Instant.now(), null)).block();
+        ToolResult r = tool.execute(Map.of("query", "session scoped", "scope", "session"), ctx).block();
+        assertThat(r.isError()).isFalse();
+    }
+
+    @Test
+    void defaultScopeIsGlobal() {
+        store.save(new MemoryEntry("g1", null, "global default scope", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+        ToolResult r = tool.execute(Map.of("query", "global default"), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("global default scope");
+    }
+
+    @Test
+    void limitClampedToMax50() {
+        for (int i = 0; i < 5; i++) {
+            store.save(new MemoryEntry("max" + i, null, "max limit item " + i, null,
+                    MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+        }
+        ToolResult r = tool.execute(Map.of("query", "max limit", "limit", 999), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("Found 5 result");
+    }
+
+    @Test
+    void limitClampedToMin1() {
+        store.save(new MemoryEntry("min1", null, "min limit entry", null,
+                MemoryScope.GLOBAL, 0.5, null, Set.of(), Instant.now(), null)).block();
+        ToolResult r = tool.execute(Map.of("query", "min limit", "limit", 0), ctx).block();
+        assertThat(r.isError()).isFalse();
+        assertThat(r.content()).contains("Found 1 result");
+    }
+
+    @Test
+    void emptyDependenciesErrors() {
+        ToolContext emptyDeps = new ToolContext("a", "s", Map.of());
+        ToolResult r = tool.execute(Map.of("query", "test"), emptyDeps).block();
+        assertThat(r.isError()).isTrue();
+        assertThat(r.content()).contains("MemoryStore not available");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("query");
+        assertThat(schema.properties()).containsKey("query");
+        assertThat(schema.properties()).containsKey("scope");
+        assertThat(schema.properties()).containsKey("limit");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = SessionSearchTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("session_search");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.INFORMATION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.READ_ONLY);
+    }
 }
