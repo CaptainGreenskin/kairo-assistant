@@ -46,4 +46,41 @@ class AssistantPermissionsTest {
         assertThat(engine.resolve("calculator", null)).isPresent();
         assertThat(engine.resolve("read_file", null)).isPresent();
     }
+
+    @Test
+    void defaultRulesAllowNoteAndTodo() {
+        PermissionSettings settings = AssistantPermissions.defaults();
+        PermissionRuleEngine engine = AssistantPermissions.createRuleEngine(settings);
+        assertThat(engine.resolve("note", null)).isPresent();
+        assertThat(engine.resolve("todo", null)).isPresent();
+        assertThat(engine.resolve("bookmark", null)).isPresent();
+    }
+
+    @Test
+    void defaultRulesAllowGitAndProcess() {
+        PermissionSettings settings = AssistantPermissions.defaults();
+        PermissionRuleEngine engine = AssistantPermissions.createRuleEngine(settings);
+        assertThat(engine.resolve("git", null)).isPresent();
+        assertThat(engine.resolve("process", null)).isPresent();
+    }
+
+    @Test
+    void strictModeHasRules() {
+        PermissionSettings settings = AssistantPermissions.strictMode();
+        assertThat(settings.rules()).hasSizeGreaterThan(10);
+    }
+
+    @Test
+    void bypassModeEngineHasNoRules() {
+        PermissionSettings settings = AssistantPermissions.autoApproveAll();
+        PermissionRuleEngine engine = AssistantPermissions.createRuleEngine(settings);
+        assertThat(engine.ruleCount()).isZero();
+    }
+
+    @Test
+    void unknownToolNotInDefaultRules() {
+        PermissionSettings settings = AssistantPermissions.defaults();
+        PermissionRuleEngine engine = AssistantPermissions.createRuleEngine(settings);
+        assertThat(engine.resolve("nonexistent_tool_xyz", null)).isEmpty();
+    }
 }
