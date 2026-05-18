@@ -8,6 +8,7 @@ import io.kairo.api.tool.ToolRegistry;
 import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.agent.AgentBuilder;
+import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.cron.CronFireCallback;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.cron.CronTaskStore;
@@ -113,6 +114,16 @@ public final class AssistantAgentFactory {
             systemPrompt += "\n# Custom Instructions\n" + customInstructions + "\n";
         }
 
+        float trigger = config.compactionTrigger();
+        CompactionThresholds compaction = CompactionThresholds.builder()
+                .triggerPressure(trigger)
+                .snipPressure(trigger)
+                .microPressure(trigger + 0.10f)
+                .collapsePressure(trigger + 0.20f)
+                .autoPressure(trigger + 0.30f)
+                .partialPressure(trigger + 0.40f)
+                .build();
+
         Agent agent =
                 AgentBuilder.create()
                         .name("kairo-assistant")
@@ -126,6 +137,7 @@ public final class AssistantAgentFactory {
                         .timeout(config.timeout())
                         .tokenBudget(config.tokenBudget())
                         .memoryStore(memoryStore)
+                        .compactionThresholds(compaction)
                         .streaming(true)
                         .build();
 

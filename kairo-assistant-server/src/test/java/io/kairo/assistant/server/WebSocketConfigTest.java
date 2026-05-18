@@ -53,6 +53,7 @@ class WebSocketConfigTest {
 
     private AssistantWebSocketHandler createHandler() {
         var session = TestFixtures.defaultSession();
-        return new AssistantWebSocketHandler(session, new SessionManager(session), new MetricsCollector(), new StreamingDeltaRouter());
+        return new AssistantWebSocketHandler(session, TestFixtures.stubGateway(),
+                new SessionAwareDeltaRouter(), new SessionManager(session), new MetricsCollector(), new StreamingDeltaRouter());
     }
 }

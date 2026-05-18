@@ -7,10 +7,10 @@ import com.dingtalk.open.app.api.security.AuthClientCredential;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,14 +29,14 @@ public class DingTalkStreamRunner implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DingTalkStreamRunner.class);
     private static final String ROBOT_MSG_TOPIC = "/v1.0/im/bot/messages/get";
 
-    private final AssistantSession session;
+    private final UnifiedGateway gateway;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
-    public DingTalkStreamRunner(AssistantSession session) {
-        this.session = session;
+    public DingTalkStreamRunner(UnifiedGateway gateway) {
+        this.gateway = gateway;
     }
 
     @Override
@@ -98,16 +98,17 @@ public class DingTalkStreamRunner implements CommandLineRunner {
             sendTextReply(sessionWebhook, "正在思考...");
         }
 
+        SessionKey key = SessionKey.of("dingtalk", conversationId);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         inProgressTasks.put(conversationId, () -> {
             cancelled.set(true);
-            session.agent().interrupt();
+            gateway.interrupt(key);
         });
 
         Thread t = new Thread(() -> {
             try {
-                Agent agent = session.agent();
-                var response = agent.call(Msg.of(MsgRole.USER, text)).block(Duration.ofMinutes(5));
+                var response = gateway.route(key, Msg.of(MsgRole.USER, text))
+                        .block(Duration.ofMinutes(5));
 
                 if (!cancelled.get() && response != null && sessionWebhook != null) {
                     String reply = response.text();

@@ -4,11 +4,14 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.cron.CronTask;
 import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.gateway.AgentSessionPool;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
@@ -49,8 +52,20 @@ final class TestFixtures {
                 defaultConfig());
     }
 
+    static UnifiedGateway stubGateway() {
+        var pool = new AgentSessionPool(10, Duration.ofMinutes(60), key -> new StubAgent(), null);
+        return new UnifiedGateway(pool);
+    }
+
+    static UnifiedGateway stubGateway(Agent agent) {
+        var pool = new AgentSessionPool(10, Duration.ofMinutes(60), key -> agent, null);
+        return new UnifiedGateway(pool);
+    }
+
     static class StubAgent implements Agent {
-        @Override public Mono<Msg> call(Msg input) { return Mono.empty(); }
+        @Override public Mono<Msg> call(Msg input) {
+            return Mono.just(Msg.of(MsgRole.ASSISTANT, "echo: " + input.text()));
+        }
         @Override public String id() { return "test"; }
         @Override public String name() { return "Test"; }
         @Override public AgentState state() { return AgentState.IDLE; }

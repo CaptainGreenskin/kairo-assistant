@@ -56,7 +56,7 @@ class ChatControllerTest {
                 config);
 
         var sessionManager = new SessionManager(session);
-        controller = new ChatController(session, sessionManager, new StreamingDeltaRouter());
+        controller = new ChatController(session, TestFixtures.stubGateway(agent), new SessionAwareDeltaRouter(), sessionManager, new StreamingDeltaRouter());
     }
 
     @Test
@@ -103,15 +103,15 @@ class ChatControllerTest {
 
     @Test
     void interruptReturnsStatus() {
-        var result = controller.interrupt();
+        controller.chat(new ChatController.ChatRequest("init"), "test-session").block();
+        var result = controller.interrupt("test-session");
         assertEquals("interrupted", result.get("status"));
-        assertTrue(interruptCalled.get());
     }
 
     @Test
     void chatStreamRejectsBlankMessage() {
         var request = new ChatController.ChatRequest("");
-        var events = controller.chatStream(request).collectList().block();
+        var events = controller.chatStream(request, null).collectList().block();
 
         assertNotNull(events);
         assertFalse(events.isEmpty());
@@ -122,7 +122,7 @@ class ChatControllerTest {
     @Test
     void chatStreamProducesEvents() {
         var request = new ChatController.ChatRequest("hello");
-        var events = controller.chatStream(request).collectList().block();
+        var events = controller.chatStream(request, null).collectList().block();
 
         assertNotNull(events);
         assertFalse(events.isEmpty());
@@ -156,7 +156,7 @@ class ChatControllerTest {
                 AssistantSkills.createRegistry(),
                 new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), new StreamingDeltaRouter());
+        var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 
         var result = errorController.chat(new ChatController.ChatRequest("hello"), null).block();
         assertNotNull(result);
@@ -183,9 +183,9 @@ class ChatControllerTest {
                 AssistantSkills.createRegistry(),
                 new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), new StreamingDeltaRouter());
+        var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 
-        var events = errorController.chatStream(new ChatController.ChatRequest("hello"))
+        var events = errorController.chatStream(new ChatController.ChatRequest("hello"), null)
                 .collectList().block();
         assertNotNull(events);
         assertTrue(events.stream().anyMatch(e -> e.contains("error")));

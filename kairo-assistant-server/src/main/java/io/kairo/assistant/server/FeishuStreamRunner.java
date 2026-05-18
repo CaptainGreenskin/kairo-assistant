@@ -9,10 +9,10 @@ import com.lark.oapi.service.im.v1.model.CreateMessageResp;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.PatchMessageReq;
 import com.lark.oapi.service.im.v1.model.PatchMessageReqBody;
-import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -31,8 +31,8 @@ public class FeishuStreamRunner implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(FeishuStreamRunner.class);
     private static final long PATCH_INTERVAL_MS = 1500;
 
-    private final AssistantSession session;
-    private final StreamingDeltaRouter deltaRouter;
+    private final UnifiedGateway gateway;
+    private final SessionAwareDeltaRouter sessionDeltaRouter;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "feishu-patch");
         t.setDaemon(true);
@@ -40,9 +40,9 @@ public class FeishuStreamRunner implements CommandLineRunner {
     });
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
-    public FeishuStreamRunner(AssistantSession session, StreamingDeltaRouter deltaRouter) {
-        this.session = session;
-        this.deltaRouter = deltaRouter;
+    public FeishuStreamRunner(UnifiedGateway gateway, SessionAwareDeltaRouter sessionDeltaRouter) {
+        this.gateway = gateway;
+        this.sessionDeltaRouter = sessionDeltaRouter;
     }
 
     @Override
@@ -125,9 +125,10 @@ public class FeishuStreamRunner implements CommandLineRunner {
         ThinkBlockFilter filter = new ThinkBlockFilter();
         StringBuilder accumulated = new StringBuilder();
         AtomicBoolean cancelled = new AtomicBoolean(false);
+        SessionKey key = SessionKey.of("feishu", chatId);
         String subId = "feishu-" + chatId + "-" + System.nanoTime();
 
-        deltaRouter.subscribe(subId, delta -> {
+        sessionDeltaRouter.subscribe(key, subId, delta -> {
             String visible = filter.filter(delta);
             if (!visible.isEmpty()) {
                 synchronized (accumulated) {
@@ -148,17 +149,17 @@ public class FeishuStreamRunner implements CommandLineRunner {
 
         inProgressTasks.put(chatId, () -> {
             cancelled.set(true);
-            session.agent().interrupt();
+            gateway.interrupt(key);
             patchFuture.cancel(false);
-            deltaRouter.unsubscribe(subId);
+            sessionDeltaRouter.unsubscribe(key, subId);
         });
 
         try {
-            Agent agent = session.agent();
-            var response = agent.call(Msg.of(MsgRole.USER, text)).block(Duration.ofMinutes(5));
+            var response = gateway.route(key, Msg.of(MsgRole.USER, text))
+                    .block(Duration.ofMinutes(5));
 
             patchFuture.cancel(false);
-            deltaRouter.unsubscribe(subId);
+            sessionDeltaRouter.unsubscribe(key, subId);
             String flushed = filter.flush();
             synchronized (accumulated) {
                 accumulated.append(flushed);
@@ -187,14 +188,15 @@ public class FeishuStreamRunner implements CommandLineRunner {
         } finally {
             inProgressTasks.remove(chatId);
             patchFuture.cancel(false);
-            deltaRouter.unsubscribe(subId);
+            sessionDeltaRouter.unsubscribe(key, subId);
         }
     }
 
     private void fallbackBlockingReply(Client apiClient, String chatId, String text) {
         try {
-            Agent agent = session.agent();
-            var response = agent.call(Msg.of(MsgRole.USER, text)).block(Duration.ofMinutes(5));
+            SessionKey key = SessionKey.of("feishu", chatId);
+            var response = gateway.route(key, Msg.of(MsgRole.USER, text))
+                    .block(Duration.ofMinutes(5));
             if (response != null) {
                 String reply = response.text().replaceAll("<think>[\\s\\S]*?</think>\\s*", "");
                 sendInitialMessage(apiClient, chatId, reply.isBlank() ? "(No response)" : reply);

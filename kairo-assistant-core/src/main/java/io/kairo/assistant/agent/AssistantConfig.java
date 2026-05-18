@@ -12,6 +12,9 @@ public record AssistantConfig(
         Duration timeout,
         int tokenBudget,
         String dataDir,
+        int sessionPoolSize,
+        Duration sessionIdleTtl,
+        float compactionTrigger,
         Map<String, String> env) {
 
     public static Builder builder() {
@@ -27,6 +30,9 @@ public record AssistantConfig(
         private Duration timeout = Duration.ofMinutes(10);
         private int tokenBudget = 128_000;
         private String dataDir = System.getProperty("user.home") + "/.kairo-assistant";
+        private int sessionPoolSize = 64;
+        private Duration sessionIdleTtl = Duration.ofMinutes(60);
+        private float compactionTrigger = 0.50f;
         private Map<String, String> env = Map.of();
 
         public Builder modelProvider(String v) {
@@ -69,6 +75,21 @@ public record AssistantConfig(
             return this;
         }
 
+        public Builder sessionPoolSize(int v) {
+            this.sessionPoolSize = v;
+            return this;
+        }
+
+        public Builder sessionIdleTtl(Duration v) {
+            this.sessionIdleTtl = v;
+            return this;
+        }
+
+        public Builder compactionTrigger(float v) {
+            this.compactionTrigger = v;
+            return this;
+        }
+
         public Builder env(Map<String, String> v) {
             this.env = v;
             return this;
@@ -90,6 +111,9 @@ public record AssistantConfig(
                     timeout,
                     tokenBudget,
                     dataDir,
+                    sessionPoolSize,
+                    sessionIdleTtl,
+                    compactionTrigger,
                     env);
         }
 

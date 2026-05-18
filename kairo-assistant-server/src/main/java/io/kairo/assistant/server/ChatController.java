@@ -3,6 +3,8 @@ package io.kairo.assistant.server;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.MediaType;
@@ -22,14 +24,20 @@ public class ChatController {
     private static final int MAX_TITLE_LENGTH = 50;
 
     private final AssistantSession session;
+    private final UnifiedGateway gateway;
+    private final SessionAwareDeltaRouter sessionDeltaRouter;
     private final SessionManager sessionManager;
     private final StreamingDeltaRouter deltaRouter;
 
     public ChatController(
             AssistantSession session,
+            UnifiedGateway gateway,
+            SessionAwareDeltaRouter sessionDeltaRouter,
             SessionManager sessionManager,
             StreamingDeltaRouter deltaRouter) {
         this.session = session;
+        this.gateway = gateway;
+        this.sessionDeltaRouter = sessionDeltaRouter;
         this.sessionManager = sessionManager;
         this.deltaRouter = deltaRouter;
     }
@@ -55,8 +63,9 @@ public class ChatController {
                     clientSession.conversationStore().currentSessionId(), title);
         }
 
+        SessionKey key = SessionKey.of("chat", clientId);
         Msg input = Msg.of(MsgRole.USER, request.message());
-        return session.agent().call(input)
+        return gateway.route(key, input)
                 .map(response -> {
                     clientSession.conversationStore().appendMessage("assistant", response.text());
                     return Map.<String, Object>of(
@@ -69,21 +78,25 @@ public class ChatController {
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chatStream(@RequestBody ChatRequest request) {
+    public Flux<String> chatStream(
+            @RequestBody ChatRequest request,
+            @RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
         if (request.message() == null || request.message().isBlank()) {
             return Flux.just("data: {\"type\":\"error\",\"message\":\"message is required\"}\n\n");
         }
 
+        String clientId = sessionId != null ? sessionId : UUID.randomUUID().toString().substring(0, 8);
+        SessionKey key = SessionKey.of("chat", clientId);
         Sinks.Many<String> sink = Sinks.many().unicast().onBackpressureBuffer();
-        String subId = "chat-stream-" + UUID.randomUUID().toString().substring(0, 8);
+        String subId = "chat-stream-" + clientId + "-" + System.nanoTime();
 
-        deltaRouter.subscribe(subId, delta ->
+        sessionDeltaRouter.subscribe(key, subId, delta ->
                 sink.tryEmitNext("data: {\"type\":\"delta\",\"content\":\"" + JsonEscape.escape(delta) + "\"}\n\n"));
 
         Msg input = Msg.of(MsgRole.USER, request.message());
-        session.agent().call(input)
+        gateway.route(key, input)
                 .doOnSuccess(response -> {
-                    deltaRouter.unsubscribe(subId);
+                    sessionDeltaRouter.unsubscribe(key, subId);
                     if (response != null) {
                         sink.tryEmitNext("data: {\"type\":\"response\",\"content\":\"" + JsonEscape.escape(response.text()) + "\"}\n\n");
                     }
@@ -91,7 +104,7 @@ public class ChatController {
                     sink.tryEmitComplete();
                 })
                 .doOnError(e -> {
-                    deltaRouter.unsubscribe(subId);
+                    sessionDeltaRouter.unsubscribe(key, subId);
                     String errMsg = e.getMessage() != null ? e.getMessage() : "unknown error";
                     sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + JsonEscape.escape(errMsg) + "\"}\n\n");
                     sink.tryEmitComplete();
@@ -102,8 +115,10 @@ public class ChatController {
     }
 
     @PostMapping(value = "/chat/interrupt")
-    public Map<String, String> interrupt() {
-        session.agent().interrupt();
+    public Map<String, String> interrupt(
+            @RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
+        String clientId = sessionId != null ? sessionId : "default";
+        gateway.interrupt(SessionKey.of("chat", clientId));
         return Map.of("status", "interrupted");
     }
 

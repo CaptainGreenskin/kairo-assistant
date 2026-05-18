@@ -6,8 +6,12 @@ import io.kairo.assistant.agent.AssistantAgentFactory;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.agent.ConversationStore;
+import io.kairo.assistant.gateway.AgentSessionPool;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.core.agent.DefaultReActAgent;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -22,18 +26,36 @@ public class KairoAssistantServer {
     private static final Logger log = LoggerFactory.getLogger(KairoAssistantServer.class);
 
     @Bean
-    public AssistantSession assistantSession() {
-        AssistantConfig config = AssistantConfig.builder()
+    public AssistantConfig assistantConfig() {
+        return AssistantConfig.builder()
                 .modelProvider(env("KAIRO_PROVIDER", "anthropic"))
                 .modelName(env("KAIRO_MODEL", "claude-sonnet-4-6"))
+                .sessionPoolSize(safeParseInt(
+                        System.getenv().getOrDefault("KAIRO_SESSION_POOL_SIZE", "64"), 64))
+                .sessionIdleTtl(Duration.ofMinutes(safeParseInt(
+                        System.getenv().getOrDefault("KAIRO_SESSION_IDLE_TTL_MINUTES", "60"), 60)))
+                .compactionTrigger(safeParseFloat(
+                        System.getenv().getOrDefault("KAIRO_COMPACTION_TRIGGER", "0.50"), 0.50f))
                 .build();
+    }
 
+    @Bean
+    public AssistantSession assistantSession(AssistantConfig config) {
         AssistantSession session = AssistantAgentFactory.create(config);
         session.start();
-
         restoreConversationHistory(session);
-
         return session;
+    }
+
+    @Bean
+    public UnifiedGateway unifiedGateway(AssistantConfig config,
+                                         SessionAwareDeltaRouter deltaRouter) {
+        AgentSessionPool pool = new AgentSessionPool(
+                config.sessionPoolSize(),
+                config.sessionIdleTtl(),
+                key -> AssistantAgentFactory.create(config).agent(),
+                evictedKey -> deltaRouter.removeSession(evictedKey));
+        return new UnifiedGateway(pool);
     }
 
     @Bean
@@ -55,7 +77,17 @@ public class KairoAssistantServer {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
             LoggerFactory.getLogger(KairoAssistantServer.class)
-                    .warn("Invalid integer '{}' for KAIRO_MAX_RESTORE_MESSAGES, using default {}", value, defaultValue);
+                    .warn("Invalid integer '{}', using default {}", value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static float safeParseFloat(String value, float defaultValue) {
+        try {
+            return Float.parseFloat(value);
+        } catch (NumberFormatException e) {
+            LoggerFactory.getLogger(KairoAssistantServer.class)
+                    .warn("Invalid float '{}', using default {}", value, defaultValue);
             return defaultValue;
         }
     }
