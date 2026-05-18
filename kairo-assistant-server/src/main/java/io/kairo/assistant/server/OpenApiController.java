@@ -54,6 +54,17 @@ public class OpenApiController {
         paths.put("/api/tools", Map.of("get", endpoint(
                 "List Tools", "Returns all registered tools with metadata", "ToolList")));
 
+        paths.put("/api/tools/{name}", Map.of("get", Map.of(
+                "summary", "Tool Detail",
+                "description", "Returns full detail of a single tool including input schema",
+                "tags", List.of("capabilities"),
+                "parameters", List.of(Map.of(
+                        "name", "name", "in", "path", "required", true,
+                        "schema", Map.of("type", "string"))),
+                "responses", Map.of("200", Map.of(
+                        "description", "Tool detail",
+                        "content", jsonContent("ToolDetail"))))));
+
         paths.put("/api/skills", Map.of("get", endpoint(
                 "List Skills", "Returns all available skills", "SkillList")));
 
@@ -352,6 +363,13 @@ public class OpenApiController {
                         "description", prop("string", "Tool description"),
                         "category", prop("string", "Tool category"),
                         "sideEffect", prop("string", "Side effect level")))));
+
+        schemas.put("ToolDetail", objectSchema(Map.of(
+                "name", prop("string", "Tool name"),
+                "description", prop("string", "Tool description"),
+                "category", prop("string", "Tool category"),
+                "inputSchema", prop("object", "JSON Schema of tool input parameters"),
+                "error", prop("string", "Error message if tool not found"))));
 
         schemas.put("SkillList", Map.of(
                 "type", "array",

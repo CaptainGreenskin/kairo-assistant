@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
 
     private static final Logger log = LoggerFactory.getLogger(AssistantWebSocketHandler.class);
     private static final long PING_INTERVAL_SECONDS = 30;
+    private static final long PROGRESS_INTERVAL_SECONDS = 3;
     private static final int MAX_MESSAGE_SIZE = 102_400;
 
     private final AssistantSession session;
@@ -199,9 +201,18 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
                     ? ra.totalTokensUsed() : 0;
             Msg input = Msg.of(MsgRole.USER, text);
             long callStart = System.currentTimeMillis();
+
+            ScheduledFuture<?> progressFuture = pingScheduler.scheduleAtFixedRate(() -> {
+                if (wsSession.isOpen()) {
+                    long elapsed = System.currentTimeMillis() - callStart;
+                    sendJson(wsSession, Map.of("type", "progress", "elapsedMs", elapsed));
+                }
+            }, PROGRESS_INTERVAL_SECONDS, PROGRESS_INTERVAL_SECONDS, TimeUnit.SECONDS);
+
             session.agent().call(input)
                     .subscribe(
                             response -> {
+                                progressFuture.cancel(false);
                                 broadcast(Map.of("type", "agent_state", "state", "IDLE"));
                                 metrics.recordAgentCall(System.currentTimeMillis() - callStart);
                                 if (session.agent() instanceof DefaultReActAgent ra2) {
@@ -220,6 +231,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
                                 sendJson(wsSession, responseData);
                             },
                             error -> {
+                                progressFuture.cancel(false);
                                 broadcast(Map.of("type", "agent_state", "state", "IDLE"));
                                 metrics.recordAgentError();
                                 sendJson(wsSession, Map.of(

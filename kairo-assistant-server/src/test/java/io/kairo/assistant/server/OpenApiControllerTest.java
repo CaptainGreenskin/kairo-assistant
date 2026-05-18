@@ -199,6 +199,18 @@ class OpenApiControllerTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void specContainsToolDetailEndpoint() {
+        Map<String, Object> spec = controller.openApiSpec();
+        Map<String, Object> paths = (Map<String, Object>) spec.get("paths");
+        assertTrue(paths.containsKey("/api/tools/{name}"), "Missing /api/tools/{name}");
+
+        Map<String, Object> components = (Map<String, Object>) spec.get("components");
+        Map<String, Object> schemas = (Map<String, Object>) components.get("schemas");
+        assertTrue(schemas.containsKey("ToolDetail"), "Missing ToolDetail schema");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void specContainsSessionManagementSchemas() {
         Map<String, Object> spec = controller.openApiSpec();
         Map<String, Object> components = (Map<String, Object>) spec.get("components");

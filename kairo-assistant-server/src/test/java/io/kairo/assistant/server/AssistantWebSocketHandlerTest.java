@@ -258,6 +258,44 @@ class AssistantWebSocketHandlerTest {
     }
 
     @Test
+    void progressHeartbeatSentDuringLongCall() throws Exception {
+        Agent slowAgent = new Agent() {
+            @Override public Mono<Msg> call(Msg input) {
+                return Mono.delay(Duration.ofSeconds(4))
+                        .map(ignored -> Msg.of(MsgRole.ASSISTANT, "done"));
+            }
+            @Override public String id() { return "slow"; }
+            @Override public String name() { return "Slow"; }
+            @Override public AgentState state() { return AgentState.IDLE; }
+            @Override public void interrupt() {}
+        };
+
+        var config = AssistantConfig.builder().apiKey("test").build();
+        var toolRegistry = new DefaultToolRegistry();
+        var slowSession = new AssistantSession(
+                slowAgent, toolRegistry, new StubToolExecutor(),
+                new InMemoryStore(), new StubCronScheduler(),
+                AssistantSkills.createRegistry(),
+                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                config);
+        var slowHandler = new AssistantWebSocketHandler(slowSession, new SessionManager(slowSession), new MetricsCollector());
+
+        var ws = new StubWebSocketSession("ws-progress");
+        slowHandler.afterConnectionEstablished(ws);
+
+        String payload = mapper.writeValueAsString(Map.of("message", "slow task"));
+        slowHandler.handleMessage(ws, new TextMessage(payload));
+
+        await().atMost(6, TimeUnit.SECONDS).until(() ->
+                ws.sentMessages.stream().anyMatch(m -> m.getPayload().toString().contains("\"progress\"")));
+        boolean hasProgress = ws.sentMessages.stream()
+                .anyMatch(m -> m.getPayload().toString().contains("elapsedMs"));
+        assertTrue(hasProgress, "should receive progress heartbeat during long agent call");
+
+        slowHandler.shutdown();
+    }
+
+    @Test
     void handleMessageWithFileOnlyNoText() throws Exception {
         var ws = new StubWebSocketSession("ws-file-only");
         handler.afterConnectionEstablished(ws);
