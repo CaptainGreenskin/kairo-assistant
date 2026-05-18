@@ -201,6 +201,24 @@ public class StatusController {
         return result;
     }
 
+    @GetMapping("/tools/search")
+    public Map<String, Object> toolSearch(@RequestParam String q) {
+        String query = q.toLowerCase();
+        var matches = session.toolRegistry().getAll().stream()
+                .filter(t -> t.name().toLowerCase().contains(query)
+                        || t.description().toLowerCase().contains(query))
+                .map(tool -> Map.of(
+                        "name", tool.name(),
+                        "description", tool.description(),
+                        "category", tool.category().name()))
+                .toList();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("query", q);
+        result.put("count", matches.size());
+        result.put("tools", matches);
+        return result;
+    }
+
     @GetMapping("/tools/{name}")
     public Map<String, Object> toolDetail(@PathVariable String name) {
         return session.toolRegistry().getAll().stream()

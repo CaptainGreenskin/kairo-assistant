@@ -57,6 +57,18 @@ public class OpenApiController {
         paths.put("/api/tools/categories", Map.of("get", endpoint(
                 "Tool Categories", "Returns tools grouped by category with counts", "ToolCategories")));
 
+        paths.put("/api/tools/search", Map.of("get", Map.of(
+                "summary", "Search Tools",
+                "description", "Search tools by name or description keyword",
+                "tags", List.of("capabilities"),
+                "parameters", List.of(Map.of(
+                        "name", "q", "in", "query", "required", true,
+                        "schema", Map.of("type", "string"),
+                        "description", "Search query")),
+                "responses", Map.of("200", Map.of(
+                        "description", "Search results",
+                        "content", jsonContent("ToolSearchResult"))))));
+
         paths.put("/api/tools/{name}", Map.of("get", Map.of(
                 "summary", "Tool Detail",
                 "description", "Returns full detail of a single tool including input schema",
@@ -372,6 +384,11 @@ public class OpenApiController {
                         "description", prop("string", "Tool description"),
                         "category", prop("string", "Tool category"),
                         "sideEffect", prop("string", "Side effect level")))));
+
+        schemas.put("ToolSearchResult", objectSchema(Map.of(
+                "query", prop("string", "Search query"),
+                "count", prop("integer", "Number of matching tools"),
+                "tools", prop("array", "Matching tools with name, description, category"))));
 
         schemas.put("ToolCategories", objectSchema(Map.of(
                 "GENERAL", prop("object", "Category with count and tool list"),

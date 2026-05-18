@@ -144,6 +144,28 @@ class StatusControllerTest {
     }
 
     @Test
+    void toolSearchFindsMatch() {
+        var result = controller.toolSearch("test");
+        assertNotNull(result);
+        assertEquals("test", result.get("query"));
+        assertTrue((Integer) result.get("count") >= 1);
+    }
+
+    @Test
+    void toolSearchNoMatch() {
+        var result = controller.toolSearch("zzz_nonexistent_xyz");
+        assertNotNull(result);
+        assertEquals(0, result.get("count"));
+    }
+
+    @Test
+    void toolSearchIsCaseInsensitive() {
+        var result = controller.toolSearch("TEST");
+        assertNotNull(result);
+        assertTrue((Integer) result.get("count") >= 1);
+    }
+
+    @Test
     void metricsReturnsPrometheus() {
         String metrics = controller.metrics();
         assertNotNull(metrics);
