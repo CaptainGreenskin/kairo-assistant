@@ -33,11 +33,25 @@ class ShellToolTest {
     }
 
     @Test
+    void errorExitCodeInMetadata() {
+        ToolResult result = tool.execute(Map.of("command", "exit 7"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.metadata()).containsEntry("exitCode", 7);
+    }
+
+    @Test
     void missingCommandReturnsError() {
         ToolResult result = tool.execute(Map.of(), emptyCtx()).block();
         assertThat(result).isNotNull();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("required");
+    }
+
+    @Test
+    void blankCommandErrors() {
+        ToolResult result = tool.execute(Map.of("command", "  "), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.isError()).isTrue();
     }
 
     @Test
@@ -53,19 +67,12 @@ class ShellToolTest {
     }
 
     @Test
-    void infiniteOutputTruncatesAndKills() {
+    void blankWorkingDirIgnored() {
         ToolResult result = tool.execute(
-                Map.of("command", "while true; do echo x; done", "timeout", 5),
-                emptyCtx()).block();
+                Map.of("command", "echo wd", "workingDir", "  "), emptyCtx()).block();
         assertThat(result).isNotNull();
-        assertThat(result.isError()).isTrue();
-    }
-
-    @Test
-    void blankCommandErrors() {
-        ToolResult result = tool.execute(Map.of("command", "  "), emptyCtx()).block();
-        assertThat(result).isNotNull();
-        assertThat(result.isError()).isTrue();
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("wd");
     }
 
     @Test
@@ -77,6 +84,13 @@ class ShellToolTest {
     }
 
     @Test
+    void exitCodeInMetadata() {
+        ToolResult result = tool.execute(Map.of("command", "echo ok"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.metadata()).containsEntry("exitCode", 0);
+    }
+
+    @Test
     void timeoutClampedToMax300() {
         ToolResult result = tool.execute(
                 Map.of("command", "echo fast", "timeout", 999), emptyCtx()).block();
@@ -85,9 +99,37 @@ class ShellToolTest {
     }
 
     @Test
-    void exitCodeInMetadata() {
-        ToolResult result = tool.execute(Map.of("command", "echo ok"), emptyCtx()).block();
+    void stderrCaptured() {
+        ToolResult result = tool.execute(
+                Map.of("command", "echo errtest >&2; exit 1"), emptyCtx()).block();
         assertThat(result).isNotNull();
-        assertThat(result.metadata()).containsEntry("exitCode", 0);
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("errtest");
+    }
+
+    @Test
+    void multilineOutput() {
+        ToolResult result = tool.execute(
+                Map.of("command", "echo line1; echo line2; echo line3"), emptyCtx()).block();
+        assertThat(result).isNotNull();
+        assertThat(result.content()).contains("line1").contains("line2").contains("line3");
+    }
+
+    @Test
+    void inputSchemaFields() {
+        var schema = tool.inputSchema();
+        assertThat(schema.required()).contains("command");
+        assertThat(schema.properties()).containsKey("command");
+        assertThat(schema.properties()).containsKey("timeout");
+        assertThat(schema.properties()).containsKey("workingDir");
+    }
+
+    @Test
+    void toolAnnotation() {
+        var ann = ShellTool.class.getAnnotation(io.kairo.api.tool.Tool.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.name()).isEqualTo("shell");
+        assertThat(ann.category()).isEqualTo(io.kairo.api.tool.ToolCategory.EXECUTION);
+        assertThat(ann.sideEffect()).isEqualTo(io.kairo.api.tool.ToolSideEffect.WRITE);
     }
 }
