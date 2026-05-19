@@ -241,30 +241,31 @@ public class FeishuStreamRunner implements CommandLineRunner {
     }
 
     private String sendInitialMessage(Client apiClient, String chatId, String content) {
-        try {
-            String textContent = "{\"text\":\"" + escapeJson(content) + "\"}";
+        return MessageDelivery.sendWithRetry(() -> {
+            try {
+                String textContent = "{\"text\":\"" + escapeJson(content) + "\"}";
 
-            CreateMessageReq req = CreateMessageReq.newBuilder()
-                    .receiveIdType("chat_id")
-                    .createMessageReqBody(CreateMessageReqBody.newBuilder()
-                            .receiveId(chatId)
-                            .msgType("text")
-                            .content(textContent)
-                            .build())
-                    .build();
+                CreateMessageReq req = CreateMessageReq.newBuilder()
+                        .receiveIdType("chat_id")
+                        .createMessageReqBody(CreateMessageReqBody.newBuilder()
+                                .receiveId(chatId)
+                                .msgType("text")
+                                .content(textContent)
+                                .build())
+                        .build();
 
-            CreateMessageResp resp = apiClient.im().message().create(req);
-            if (resp != null && resp.success() && resp.getData() != null) {
-                return resp.getData().getMessageId();
+                CreateMessageResp resp = apiClient.im().message().create(req);
+                if (resp != null && resp.success() && resp.getData() != null) {
+                    return resp.getData().getMessageId();
+                }
+                throw new RuntimeException("Feishu create failed: code=" +
+                        (resp != null ? resp.getCode() : "null"));
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e.getMessage(), e);
             }
-            log.warn("Feishu create message failed: code={}, msg={}",
-                    resp != null ? resp.getCode() : "null",
-                    resp != null ? resp.getMsg() : "null");
-            return null;
-        } catch (Exception e) {
-            log.error("Failed to create Feishu message", e);
-            return null;
-        }
+        }, "feishu-create-message");
     }
 
     private void patchMessage(Client apiClient, String messageId, String content) {

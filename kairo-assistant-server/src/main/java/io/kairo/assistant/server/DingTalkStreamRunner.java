@@ -198,21 +198,25 @@ public class DingTalkStreamRunner implements CommandLineRunner {
     }
 
     private void doPost(String url, ObjectNode body) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
-                    .timeout(Duration.ofSeconds(10))
-                    .build();
+        MessageDelivery.sendWithRetry(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                        .timeout(Duration.ofSeconds(10))
+                        .build();
 
-            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                log.warn("DingTalk reply failed: HTTP {} — {}", resp.statusCode(), resp.body());
+                HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() != 200) {
+                    throw new RuntimeException("HTTP " + resp.statusCode() + ": " + resp.body());
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e.getMessage(), e);
             }
-        } catch (Exception e) {
-            log.error("DingTalk HTTP POST failed", e);
-        }
+        }, "dingtalk-reply");
     }
 
     private String extractText(JsonNode request) {
