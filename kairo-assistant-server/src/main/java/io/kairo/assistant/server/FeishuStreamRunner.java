@@ -39,6 +39,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
     private final SessionAwareDeltaRouter sessionDeltaRouter;
     private final ModelSwitchService modelSwitchService;
     private final OutboundMessageRouter outboundRouter;
+    private final SessionMirror sessionMirror;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "feishu-patch");
         t.setDaemon(true);
@@ -49,11 +50,13 @@ public class FeishuStreamRunner implements CommandLineRunner {
     public FeishuStreamRunner(UnifiedGateway gateway,
                               SessionAwareDeltaRouter sessionDeltaRouter,
                               ModelSwitchService modelSwitchService,
-                              OutboundMessageRouter outboundRouter) {
+                              OutboundMessageRouter outboundRouter,
+                              SessionMirror sessionMirror) {
         this.gateway = gateway;
         this.sessionDeltaRouter = sessionDeltaRouter;
         this.modelSwitchService = modelSwitchService;
         this.outboundRouter = outboundRouter;
+        this.sessionMirror = sessionMirror;
     }
 
     @Override
@@ -167,6 +170,9 @@ public class FeishuStreamRunner implements CommandLineRunner {
 
                 cancelInProgress(sessionDest);
 
+                SessionKey mirrorKey = SessionKey.of("feishu", sessionDest);
+                sessionMirror.onInbound(mirrorKey, "feishu", imageKey != null ? "[image] " + text : text);
+
                 if (imageKey != null) {
                     processImageMessage(apiClient, chatId, messageId_event, imageKey, text, sessionDest);
                     return;
@@ -255,6 +261,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
                     finalText = "(No response)";
                 }
                 patchMessage(apiClient, messageId, finalText);
+                sessionMirror.onOutbound(key, "feishu", finalText);
                 log.info("Feishu reply sent to chat [{}]: {}",
                         chatId, finalText.length() > 80 ? finalText.substring(0, 80) + "..." : finalText);
             }
@@ -278,7 +285,9 @@ public class FeishuStreamRunner implements CommandLineRunner {
                     .block(Duration.ofMinutes(5));
             if (response != null) {
                 String reply = response.text().replaceAll("<think>[\\s\\S]*?</think>\\s*", "");
-                sendInitialMessage(apiClient, chatId, reply.isBlank() ? "(No response)" : reply);
+                String finalReply = reply.isBlank() ? "(No response)" : reply;
+                sendInitialMessage(apiClient, chatId, finalReply);
+                sessionMirror.onOutbound(key, "feishu", finalReply);
             }
         } catch (Exception e) {
             log.error("Feishu fallback reply failed", e);
@@ -375,6 +384,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
                     } else {
                         sendInitialMessage(apiClient, chatId, reply);
                     }
+                    sessionMirror.onOutbound(key, "feishu", reply);
                     log.info("Feishu image reply sent to chat [{}]: {}",
                             chatId, reply.length() > 80 ? reply.substring(0, 80) + "..." : reply);
                 }

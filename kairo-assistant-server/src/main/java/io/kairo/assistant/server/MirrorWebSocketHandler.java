@@ -64,6 +64,15 @@ public class MirrorWebSocketHandler extends TextWebSocketHandler {
                         sendAck(session, "subscribed to user " + userId);
                     }
                 }
+                case "subscribe_all" -> {
+                    SubscriptionState state = connections.get(session.getId());
+                    if (state != null) {
+                        Consumer<String> listener = msg -> safeSend(session, msg);
+                        mirror.subscribeAll(listener);
+                        state.globalListener = listener;
+                        sendAck(session, "subscribed to all sessions");
+                    }
+                }
                 case "stats" -> {
                     String stats = mapper.writeValueAsString(mirror.stats());
                     safeSend(session, stats);
@@ -79,12 +88,17 @@ public class MirrorWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         SubscriptionState state = connections.remove(session.getId());
-        if (state != null && state.listener != null) {
-            if (state.sessionKey != null) {
-                mirror.unsubscribe(state.sessionKey, state.listener);
+        if (state != null) {
+            if (state.listener != null) {
+                if (state.sessionKey != null) {
+                    mirror.unsubscribe(state.sessionKey, state.listener);
+                }
+                if (state.userId != null) {
+                    mirror.unsubscribeUser(state.userId, state.listener);
+                }
             }
-            if (state.userId != null) {
-                mirror.unsubscribeUser(state.userId, state.listener);
+            if (state.globalListener != null) {
+                mirror.unsubscribeAll(state.globalListener);
             }
         }
         log.info("Mirror client disconnected: {}", session.getId());
@@ -113,6 +127,7 @@ public class MirrorWebSocketHandler extends TextWebSocketHandler {
         SessionKey sessionKey;
         String userId;
         Consumer<String> listener;
+        Consumer<String> globalListener;
 
         SubscriptionState(WebSocketSession session) {
             this.session = session;

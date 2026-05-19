@@ -34,16 +34,19 @@ public class DingTalkStreamRunner implements CommandLineRunner {
     private final UnifiedGateway gateway;
     private final ModelSwitchService modelSwitchService;
     private final OutboundMessageRouter outboundRouter;
+    private final SessionMirror sessionMirror;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
     public DingTalkStreamRunner(UnifiedGateway gateway, ModelSwitchService modelSwitchService,
-                                OutboundMessageRouter outboundRouter) {
+                                OutboundMessageRouter outboundRouter,
+                                SessionMirror sessionMirror) {
         this.gateway = gateway;
         this.modelSwitchService = modelSwitchService;
         this.outboundRouter = outboundRouter;
+        this.sessionMirror = sessionMirror;
     }
 
     @Override
@@ -172,6 +175,8 @@ public class DingTalkStreamRunner implements CommandLineRunner {
             return;
         }
 
+        sessionMirror.onInbound(key, "dingtalk", text);
+
         if (sessionWebhook != null) {
             sendTextReply(sessionWebhook, "正在思考...");
         }
@@ -193,6 +198,7 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                         reply = "(No response)";
                     }
                     sendMarkdownReply(sessionWebhook, reply);
+                    sessionMirror.onOutbound(key, "dingtalk", reply);
                     log.info("DingTalk reply sent to [{}]: {}",
                             senderNick, reply.length() > 80 ? reply.substring(0, 80) + "..." : reply);
                 }
@@ -217,11 +223,12 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                                          String sessionDest) {
         cancelInProgress(sessionDest);
 
+        SessionKey key = SessionKey.of("dingtalk", sessionDest);
+        sessionMirror.onInbound(key, "dingtalk", text != null ? text : "[image]");
+
         if (sessionWebhook != null) {
             sendTextReply(sessionWebhook, "正在分析图片...");
         }
-
-        SessionKey key = SessionKey.of("dingtalk", sessionDest);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         inProgressTasks.put(sessionDest, () -> {
             cancelled.set(true);
@@ -240,6 +247,7 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                         reply = "(No response)";
                     }
                     sendMarkdownReply(sessionWebhook, reply);
+                    sessionMirror.onOutbound(key, "dingtalk", reply);
                     log.info("DingTalk image reply sent to [{}]: {}",
                             senderNick, reply.length() > 80 ? reply.substring(0, 80) + "..." : reply);
                 }

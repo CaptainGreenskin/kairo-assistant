@@ -22,6 +22,7 @@ public class SessionMirror {
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Set<Consumer<String>>> userSubscribers =
             new ConcurrentHashMap<>();
+    private final Set<Consumer<String>> globalSubscribers = new CopyOnWriteArraySet<>();
 
     public void subscribe(SessionKey sessionKey, Consumer<String> listener) {
         subscribers.computeIfAbsent(sessionKey, k -> new CopyOnWriteArraySet<>()).add(listener);
@@ -45,6 +46,14 @@ public class SessionMirror {
             subs.remove(listener);
             if (subs.isEmpty()) userSubscribers.remove(userId);
         }
+    }
+
+    public void subscribeAll(Consumer<String> listener) {
+        globalSubscribers.add(listener);
+    }
+
+    public void unsubscribeAll(Consumer<String> listener) {
+        globalSubscribers.remove(listener);
     }
 
     public void onMessage(SessionKey sessionKey, String direction, String platform,
@@ -74,6 +83,10 @@ public class SessionMirror {
                 safeSend(sub, json);
             }
         }
+
+        for (Consumer<String> sub : globalSubscribers) {
+            safeSend(sub, json);
+        }
     }
 
     public void onInbound(SessionKey sessionKey, String platform, String message) {
@@ -86,7 +99,8 @@ public class SessionMirror {
 
     public int subscriberCount() {
         return subscribers.values().stream().mapToInt(Set::size).sum()
-                + userSubscribers.values().stream().mapToInt(Set::size).sum();
+                + userSubscribers.values().stream().mapToInt(Set::size).sum()
+                + globalSubscribers.size();
     }
 
     public Map<String, Integer> stats() {
