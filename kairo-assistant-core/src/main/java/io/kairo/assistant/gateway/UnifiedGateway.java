@@ -13,19 +13,31 @@ import reactor.core.publisher.Mono;
 public class UnifiedGateway {
 
     private static final Logger log = LoggerFactory.getLogger(UnifiedGateway.class);
+    private static final int DEFAULT_MAX_CONCURRENT = 16;
 
     private final AgentSessionPool pool;
     private final ConcurrentHashMap<SessionKey, Semaphore> callLocks = new ConcurrentHashMap<>();
     private final AtomicInteger activeRequests = new AtomicInteger(0);
     private final AtomicBoolean draining = new AtomicBoolean(false);
+    private final int maxConcurrent;
 
     public UnifiedGateway(AgentSessionPool pool) {
+        this(pool, DEFAULT_MAX_CONCURRENT);
+    }
+
+    public UnifiedGateway(AgentSessionPool pool, int maxConcurrent) {
         this.pool = pool;
+        this.maxConcurrent = maxConcurrent;
     }
 
     public Mono<Msg> route(SessionKey key, Msg input) {
         if (draining.get()) {
             return Mono.error(new IllegalStateException("Gateway is shutting down"));
+        }
+
+        if (activeRequests.get() >= maxConcurrent) {
+            return Mono.error(new ConcurrencyLimitExceededException(
+                    "Max concurrent requests reached (" + maxConcurrent + ")"));
         }
 
         Agent agent = pool.getOrCreate(key);

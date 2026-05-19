@@ -55,7 +55,9 @@ public class KairoAssistantServer {
                 config.sessionIdleTtl(),
                 key -> AssistantAgentFactory.create(config).agent(),
                 evictedKey -> deltaRouter.removeSession(evictedKey));
-        return new UnifiedGateway(pool);
+        int maxConcurrent = safeParseInt(
+                System.getenv().getOrDefault("KAIRO_MAX_CONCURRENT_RUNS", "16"), 16);
+        return new UnifiedGateway(pool, maxConcurrent);
     }
 
     @Bean

@@ -3,6 +3,7 @@ package io.kairo.assistant.server;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.assistant.gateway.ConcurrencyLimitExceededException;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import java.time.Instant;
@@ -85,6 +86,14 @@ public class OpenAiCompatibleController {
                         "owned_by", "kairo")));
     }
 
+    @GetMapping("/runs")
+    public Map<String, Object> listRuns() {
+        return Map.of(
+                "active", gateway.activeRequestCount(),
+                "pool_size", gateway.pool().size(),
+                "draining", gateway.isDraining());
+    }
+
     private Mono<ResponseEntity<Map<String, Object>>> blockingResponse(
             SessionKey key, String content, String clientId) {
         Msg input = Msg.of(MsgRole.USER, content);
@@ -111,6 +120,10 @@ public class OpenAiCompatibleController {
                             .body(body);
                 })
                 .onErrorResume(e -> {
+                    if (e instanceof ConcurrencyLimitExceededException) {
+                        return Mono.just(ResponseEntity.status(429)
+                                .body(rateLimitResponse(e.getMessage())));
+                    }
                     log.error("OpenAI API error", e);
                     return Mono.just(ResponseEntity.internalServerError()
                             .body(errorResponse(e.getMessage())));
@@ -204,5 +217,12 @@ public class OpenAiCompatibleController {
                 "message", message,
                 "type", "invalid_request_error",
                 "code", "invalid_request"));
+    }
+
+    private Map<String, Object> rateLimitResponse(String message) {
+        return Map.of("error", Map.of(
+                "message", message,
+                "type", "rate_limit_exceeded",
+                "code", "rate_limit_exceeded"));
     }
 }
