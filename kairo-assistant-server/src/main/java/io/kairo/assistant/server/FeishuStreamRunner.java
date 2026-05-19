@@ -9,6 +9,9 @@ import com.lark.oapi.service.im.v1.model.CreateMessageResp;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.PatchMessageReq;
 import com.lark.oapi.service.im.v1.model.PatchMessageReqBody;
+import com.lark.oapi.service.im.v1.model.GetMessageResourceReq;
+import com.lark.oapi.service.im.v1.model.GetMessageResourceResp;
+import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.gateway.ModelSwitchService;
@@ -99,8 +102,19 @@ public class FeishuStreamRunner implements CommandLineRunner {
                         ? eventData.getSender().getSenderId().getOpenId() : "unknown";
                 boolean isGroup = "group".equals(chatType);
 
+                String messageId_event = eventData.getMessage().getMessageId();
+                String imageKey = null;
+
+                if ("image".equals(msgType)) {
+                    imageKey = extractImageKey(eventData.getMessage().getContent());
+                    if (imageKey == null) {
+                        log.debug("Ignoring image message with no image_key");
+                        return;
+                    }
+                }
+
                 String text = extractText(eventData.getMessage().getContent(), msgType);
-                if (text == null || text.isBlank()) {
+                if (imageKey == null && (text == null || text.isBlank())) {
                     log.debug("Ignoring empty Feishu message");
                     return;
                 }
@@ -139,6 +153,11 @@ public class FeishuStreamRunner implements CommandLineRunner {
                 }
 
                 cancelInProgress(sessionDest);
+
+                if (imageKey != null) {
+                    processImageMessage(apiClient, chatId, messageId_event, imageKey, text, sessionDest);
+                    return;
+                }
 
                 String messageId = sendInitialMessage(apiClient, chatId, "正在思考...");
                 if (messageId == null) {
@@ -304,6 +323,104 @@ public class FeishuStreamRunner implements CommandLineRunner {
         } catch (Exception e) {
             log.debug("Feishu patch message failed (may be deleted): {}", e.getMessage());
         }
+    }
+
+    private void processImageMessage(Client apiClient, String chatId, String eventMessageId,
+                                      String imageKey, String text, String sessionDest) {
+        String replyMsgId = sendInitialMessage(apiClient, chatId, "正在分析图片...");
+
+        SessionKey key = SessionKey.of("feishu", sessionDest);
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        inProgressTasks.put(sessionDest, () -> {
+            cancelled.set(true);
+            gateway.interrupt(key);
+        });
+
+        Thread t = new Thread(() -> {
+            try {
+                byte[] imageBytes = downloadImage(apiClient, eventMessageId, imageKey);
+                if (imageBytes == null || imageBytes.length == 0) {
+                    String errorMsg = "Failed to download image from Feishu";
+                    if (replyMsgId != null) {
+                        patchMessage(apiClient, replyMsgId, errorMsg);
+                    } else {
+                        sendInitialMessage(apiClient, chatId, errorMsg);
+                    }
+                    return;
+                }
+
+                Msg input = buildMultimodalMsg(text, imageBytes);
+                var response = gateway.route(key, input).block(Duration.ofMinutes(5));
+
+                if (!cancelled.get() && response != null) {
+                    String reply = response.text().replaceAll("<think>[\\s\\S]*?</think>\\s*", "");
+                    if (reply.isBlank()) {
+                        reply = "(No response)";
+                    }
+                    if (replyMsgId != null) {
+                        patchMessage(apiClient, replyMsgId, reply);
+                    } else {
+                        sendInitialMessage(apiClient, chatId, reply);
+                    }
+                    log.info("Feishu image reply sent to chat [{}]: {}",
+                            chatId, reply.length() > 80 ? reply.substring(0, 80) + "..." : reply);
+                }
+            } catch (Exception e) {
+                if (!cancelled.get()) {
+                    log.error("Error processing Feishu image message", e);
+                    String errorMsg = "Error: " + e.getMessage();
+                    if (replyMsgId != null) {
+                        patchMessage(apiClient, replyMsgId, errorMsg);
+                    } else {
+                        sendInitialMessage(apiClient, chatId, errorMsg);
+                    }
+                }
+            } finally {
+                inProgressTasks.remove(sessionDest);
+            }
+        });
+        t.setDaemon(true);
+        t.setName("feishu-image-" + Math.abs(sessionDest.hashCode() % 1000));
+        t.start();
+    }
+
+    private byte[] downloadImage(Client apiClient, String messageId, String imageKey) {
+        try {
+            GetMessageResourceReq req = GetMessageResourceReq.newBuilder()
+                    .messageId(messageId)
+                    .fileKey(imageKey)
+                    .type("image")
+                    .build();
+
+            GetMessageResourceResp resp = apiClient.im().messageResource().get(req);
+            if (resp != null && resp.success() && resp.getData() != null) {
+                return resp.getData().toByteArray();
+            }
+            log.warn("Feishu image download failed: code={}, msg={}",
+                    resp != null ? resp.getCode() : "null",
+                    resp != null ? resp.getMsg() : "null");
+        } catch (Exception e) {
+            log.error("Failed to download Feishu image [{}]: {}", imageKey, e.getMessage());
+        }
+        return null;
+    }
+
+    private String extractImageKey(String content) {
+        if (content == null) return null;
+        try {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(content);
+            return node.path("image_key").asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Msg buildMultimodalMsg(String text, byte[] imageBytes) {
+        var builder = Msg.builder().role(MsgRole.USER);
+        builder.addContent(new Content.ImageContent(null, "image/jpeg", imageBytes));
+        String prompt = (text != null && !text.isBlank()) ? text : "请描述这张图片";
+        builder.addContent(new Content.TextContent(prompt));
+        return builder.build();
     }
 
     private String extractText(String content, String msgType) {

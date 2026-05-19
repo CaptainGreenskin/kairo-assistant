@@ -13,6 +13,7 @@ import io.kairo.api.tool.ToolSideEffect;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import reactor.core.publisher.Mono;
 
 @Tool(
@@ -51,10 +52,26 @@ public class SendMessageTool implements SyncTool {
                 return Mono.just(ToolResult.error("send_message", "Parameter 'message' is required"));
             }
 
+            String dest = (String) args.getOrDefault("destination", "default");
+
+            // Try outbound router first (lightweight, server-registered senders)
+            Object router = ctx.dependencies().get("outboundRouter");
+            if (router instanceof OutboundRouter outbound) {
+                boolean sent = outbound.send(channelId, dest, message);
+                return Mono.just(sent
+                        ? ToolResult.success("send_message",
+                        "Message sent to " + channelId + "/" + dest)
+                        : ToolResult.error("send_message",
+                        "Failed to send to " + channelId + ". Available: "
+                                + outbound.platforms()));
+            }
+
+            // Fallback to Channel SPI
             Map<String, Channel> channels =
                     (Map<String, Channel>) ctx.dependencies().get("channels");
             if (channels == null || channels.isEmpty()) {
-                return Mono.just(ToolResult.error("send_message", "No channels configured"));
+                return Mono.just(ToolResult.error("send_message",
+                        "No channels configured. Set up outboundRouter or channels dependency."));
             }
 
             Channel channel = channels.get(channelId);
@@ -64,7 +81,6 @@ public class SendMessageTool implements SyncTool {
                                 + ". Available: " + channels.keySet()));
             }
 
-            String dest = (String) args.getOrDefault("destination", "default");
             ChannelIdentity identity = ChannelIdentity.of(channelId, dest);
             ChannelMessage msg = ChannelMessage.of(identity, message);
 
@@ -81,5 +97,10 @@ public class SendMessageTool implements SyncTool {
                     .onErrorResume(e -> Mono.just(ToolResult.error("send_message",
                             "Send failed: " + e.getMessage())));
         });
+    }
+
+    public interface OutboundRouter {
+        boolean send(String platform, String destination, String message);
+        java.util.Set<String> platforms();
     }
 }
