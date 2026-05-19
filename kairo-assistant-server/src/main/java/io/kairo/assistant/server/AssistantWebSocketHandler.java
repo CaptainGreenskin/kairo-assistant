@@ -291,6 +291,19 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         }
     }
 
+    public void broadcastShutdown() {
+        broadcast(Map.of("type", "shutdown", "message", "Server is shutting down"));
+        for (WebSocketSession ws : activeSessions.values()) {
+            try {
+                if (ws.isOpen()) {
+                    ws.close(org.springframework.web.socket.CloseStatus.SERVICE_RESTARTED);
+                }
+            } catch (Exception e) {
+                log.debug("Failed to close WebSocket {}: {}", ws.getId(), e.getMessage());
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private String handleFileAttachment(Map<String, Object> payload) {
         Object fileObj = payload.get("file");

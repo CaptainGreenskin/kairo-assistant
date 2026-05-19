@@ -4,6 +4,8 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -14,12 +16,18 @@ public class UnifiedGateway {
 
     private final AgentSessionPool pool;
     private final ConcurrentHashMap<SessionKey, Semaphore> callLocks = new ConcurrentHashMap<>();
+    private final AtomicInteger activeRequests = new AtomicInteger(0);
+    private final AtomicBoolean draining = new AtomicBoolean(false);
 
     public UnifiedGateway(AgentSessionPool pool) {
         this.pool = pool;
     }
 
     public Mono<Msg> route(SessionKey key, Msg input) {
+        if (draining.get()) {
+            return Mono.error(new IllegalStateException("Gateway is shutting down"));
+        }
+
         Agent agent = pool.getOrCreate(key);
         Semaphore sem = callLocks.computeIfAbsent(key, k -> new Semaphore(1));
 
@@ -34,8 +42,12 @@ public class UnifiedGateway {
                     return Mono.error(e);
                 }
             }
+            activeRequests.incrementAndGet();
             return agent.call(input)
-                    .doFinally(signal -> sem.release());
+                    .doFinally(signal -> {
+                        activeRequests.decrementAndGet();
+                        sem.release();
+                    });
         });
     }
 
@@ -47,11 +59,38 @@ public class UnifiedGateway {
         }
     }
 
+    public int activeRequestCount() {
+        return activeRequests.get();
+    }
+
+    public boolean isDraining() {
+        return draining.get();
+    }
+
+    public void startDrain() {
+        draining.set(true);
+        log.info("Gateway drain started, rejecting new requests");
+    }
+
+    public boolean awaitDrain(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (activeRequests.get() > 0 && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return activeRequests.get() == 0;
+    }
+
     public AgentSessionPool pool() {
         return pool;
     }
 
     public void shutdown() {
+        draining.set(true);
         pool.shutdown();
         callLocks.clear();
     }
