@@ -11,9 +11,14 @@ import io.kairo.assistant.gateway.ModelRegistry;
 import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.assistant.goal.Goal;
+import io.kairo.assistant.goal.GoalScheduler;
+import io.kairo.assistant.goal.GoalStore;
+import io.kairo.assistant.tool.GoalTool;
 import io.kairo.core.agent.DefaultReActAgent;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -78,6 +83,41 @@ public class KairoAssistantServer {
     public ConversationStore conversationStore(AssistantSession session) {
         Path dataDir = Path.of(session.config().dataDir());
         return new ConversationStore(dataDir.resolve("conversations"));
+    }
+
+    @Bean
+    public OutboundMessageRouter outboundMessageRouter() {
+        return new OutboundMessageRouter();
+    }
+
+    @Bean
+    public GoalStore goalStore(AssistantSession session) {
+        Path dataDir = Path.of(session.config().dataDir()).resolve("goals");
+        GoalStore store = new GoalStore(dataDir);
+        GoalTool.setStore(store);
+        return store;
+    }
+
+    @Bean(initMethod = "start", destroyMethod = "stop")
+    public GoalScheduler goalScheduler(GoalStore store, UnifiedGateway gateway,
+                                       OutboundMessageRouter outboundRouter) {
+        ZoneId zone = ZoneId.of(env("KAIRO_TIMEZONE", "Asia/Shanghai"));
+        return new GoalScheduler(store, (goal, prompt) -> {
+            try {
+                SessionKey key = SessionKey.of("goal", goal.id());
+                Msg input = Msg.of(MsgRole.USER, prompt);
+                Msg result = gateway.route(key, input).block(Duration.ofMinutes(5));
+                if (result != null && goal.channel() != null && !goal.channel().isBlank()) {
+                    String dest = goal.target() != null && !goal.target().isBlank()
+                            ? goal.target() : "default";
+                    outboundRouter.send(goal.channel(), dest,
+                            "[Goal: " + goal.description() + "]\n" + result.text());
+                }
+                log.info("Goal [{}] executed successfully", goal.id());
+            } catch (Exception e) {
+                log.error("Goal [{}] execution failed: {}", goal.id(), e.getMessage());
+            }
+        }, zone);
     }
 
     @Bean

@@ -38,6 +38,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
     private final UnifiedGateway gateway;
     private final SessionAwareDeltaRouter sessionDeltaRouter;
     private final ModelSwitchService modelSwitchService;
+    private final OutboundMessageRouter outboundRouter;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "feishu-patch");
         t.setDaemon(true);
@@ -47,10 +48,12 @@ public class FeishuStreamRunner implements CommandLineRunner {
 
     public FeishuStreamRunner(UnifiedGateway gateway,
                               SessionAwareDeltaRouter sessionDeltaRouter,
-                              ModelSwitchService modelSwitchService) {
+                              ModelSwitchService modelSwitchService,
+                              OutboundMessageRouter outboundRouter) {
         this.gateway = gateway;
         this.sessionDeltaRouter = sessionDeltaRouter;
         this.modelSwitchService = modelSwitchService;
+        this.outboundRouter = outboundRouter;
     }
 
     @Override
@@ -65,6 +68,16 @@ public class FeishuStreamRunner implements CommandLineRunner {
 
         try {
             Client apiClient = Client.newBuilder(appId, appSecret).build();
+
+            outboundRouter.register("feishu", (destination, message) -> {
+                try {
+                    sendInitialMessage(apiClient, destination, message);
+                    return true;
+                } catch (Exception e) {
+                    log.error("Feishu outbound send failed to [{}]: {}", destination, e.getMessage());
+                    return false;
+                }
+            });
 
             EventDispatcher eventDispatcher = EventDispatcher.newBuilder("", "")
                     .onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {

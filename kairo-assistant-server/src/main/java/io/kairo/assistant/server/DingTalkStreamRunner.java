@@ -33,14 +33,17 @@ public class DingTalkStreamRunner implements CommandLineRunner {
 
     private final UnifiedGateway gateway;
     private final ModelSwitchService modelSwitchService;
+    private final OutboundMessageRouter outboundRouter;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
-    public DingTalkStreamRunner(UnifiedGateway gateway, ModelSwitchService modelSwitchService) {
+    public DingTalkStreamRunner(UnifiedGateway gateway, ModelSwitchService modelSwitchService,
+                                OutboundMessageRouter outboundRouter) {
         this.gateway = gateway;
         this.modelSwitchService = modelSwitchService;
+        this.outboundRouter = outboundRouter;
     }
 
     @Override
@@ -52,6 +55,21 @@ public class DingTalkStreamRunner implements CommandLineRunner {
             log.info("DingTalk Stream Mode disabled (DINGTALK_CLIENT_ID/SECRET not set)");
             return;
         }
+
+        outboundRouter.register("dingtalk", (destination, message) -> {
+            try {
+                ObjectNode body = mapper.createObjectNode();
+                body.put("msgtype", "markdown");
+                ObjectNode md = body.putObject("markdown");
+                md.put("title", "Notification");
+                md.put("text", message);
+                doPost(destination, body);
+                return true;
+            } catch (Exception e) {
+                log.error("DingTalk outbound send failed to [{}]: {}", destination, e.getMessage());
+                return false;
+            }
+        });
 
         try {
             OpenDingTalkClient client = OpenDingTalkStreamClientBuilder.custom()
