@@ -7,6 +7,8 @@ import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.agent.ConversationStore;
 import io.kairo.assistant.gateway.AgentSessionPool;
+import io.kairo.assistant.gateway.ModelRegistry;
+import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.core.agent.DefaultReActAgent;
@@ -58,6 +60,18 @@ public class KairoAssistantServer {
         int maxConcurrent = safeParseInt(
                 System.getenv().getOrDefault("KAIRO_MAX_CONCURRENT_RUNS", "16"), 16);
         return new UnifiedGateway(pool, maxConcurrent);
+    }
+
+    @Bean
+    public ModelRegistry modelRegistry() {
+        return new ModelRegistry();
+    }
+
+    @Bean
+    public ModelSwitchService modelSwitchService(UnifiedGateway gateway,
+                                                  ModelRegistry registry,
+                                                  AssistantConfig config) {
+        return new ModelSwitchService(gateway, registry, config);
     }
 
     @Bean

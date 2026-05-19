@@ -132,6 +132,37 @@ class AgentSessionPoolTest {
     }
 
     @Test
+    void replacePutsNewAgentForExistingKey() {
+        pool = new AgentSessionPool(10, Duration.ofMinutes(60),
+                key -> stubAgent("original"), null);
+
+        var key = SessionKey.of("test", "session1");
+        Agent original = pool.getOrCreate(key);
+        assertThat(original.name()).isEqualTo("original");
+
+        Agent replacement = stubAgent("replacement");
+        pool.replace(key, replacement);
+
+        Agent current = pool.get(key);
+        assertThat(current).isSameAs(replacement);
+        assertThat(current.name()).isEqualTo("replacement");
+        assertThat(pool.size()).isEqualTo(1);
+    }
+
+    @Test
+    void replaceForNonExistentKeyAddsToPool() {
+        pool = new AgentSessionPool(10, Duration.ofMinutes(60),
+                key -> stubAgent("original"), null);
+
+        var key = SessionKey.of("test", "new-session");
+        Agent replacement = stubAgent("new-agent");
+        pool.replace(key, replacement);
+
+        assertThat(pool.get(key)).isSameAs(replacement);
+        assertThat(pool.size()).isEqualTo(1);
+    }
+
+    @Test
     void idleEvictionRemovesStaleEntries() throws InterruptedException {
         List<SessionKey> evicted = Collections.synchronizedList(new ArrayList<>());
         pool = new AgentSessionPool(10, Duration.ofMillis(50),

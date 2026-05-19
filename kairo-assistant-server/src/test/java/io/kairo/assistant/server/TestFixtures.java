@@ -11,6 +11,8 @@ import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.gateway.AgentSessionPool;
+import io.kairo.assistant.gateway.ModelRegistry;
+import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
@@ -60,6 +62,10 @@ final class TestFixtures {
     static UnifiedGateway stubGateway(Agent agent) {
         var pool = new AgentSessionPool(10, Duration.ofMinutes(60), key -> agent, null);
         return new UnifiedGateway(pool);
+    }
+
+    static ModelSwitchService stubModelSwitchService(UnifiedGateway gateway) {
+        return new ModelSwitchService(gateway, new ModelRegistry(), defaultConfig());
     }
 
     static class StubAgent implements Agent {

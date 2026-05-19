@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import java.net.URI;
@@ -30,13 +31,15 @@ public class DingTalkStreamRunner implements CommandLineRunner {
     private static final String ROBOT_MSG_TOPIC = "/v1.0/im/bot/messages/get";
 
     private final UnifiedGateway gateway;
+    private final ModelSwitchService modelSwitchService;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
-    public DingTalkStreamRunner(UnifiedGateway gateway) {
+    public DingTalkStreamRunner(UnifiedGateway gateway, ModelSwitchService modelSwitchService) {
         this.gateway = gateway;
+        this.modelSwitchService = modelSwitchService;
     }
 
     @Override
@@ -122,11 +125,23 @@ public class DingTalkStreamRunner implements CommandLineRunner {
                               String sessionDest) {
         cancelInProgress(sessionDest);
 
+        SessionKey key = SessionKey.of("dingtalk", sessionDest);
+
+        if (text.startsWith("/model")) {
+            String modelId = text.substring("/model".length()).trim();
+            if (modelId.isEmpty()) {
+                String available = String.join(", ", modelSwitchService.registry().aliases());
+                sendTextReply(sessionWebhook, "Available models: " + available);
+            } else {
+                ModelSwitchService.SwitchResult result = modelSwitchService.switchModel(key, modelId);
+                sendTextReply(sessionWebhook, result.message());
+            }
+            return;
+        }
+
         if (sessionWebhook != null) {
             sendTextReply(sessionWebhook, "正在思考...");
         }
-
-        SessionKey key = SessionKey.of("dingtalk", sessionDest);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         inProgressTasks.put(sessionDest, () -> {
             cancelled.set(true);

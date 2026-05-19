@@ -2,6 +2,8 @@ package io.kairo.assistant.gateway;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
+import io.kairo.core.agent.DefaultReActAgent;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,6 +71,20 @@ public class UnifiedGateway {
             agent.interrupt();
             log.info("Interrupted session [{}]", key);
         }
+    }
+
+    public void switchModel(SessionKey key, Agent newAgent) {
+        Agent oldAgent = pool.get(key);
+        if (oldAgent instanceof DefaultReActAgent old) {
+            List<Msg> history = old.conversationHistory();
+            if (newAgent instanceof DefaultReActAgent newReAct && !history.isEmpty()) {
+                newReAct.injectMessages(history);
+                log.info("Transferred {} messages to new model agent for [{}]",
+                        history.size(), key);
+            }
+        }
+        pool.replace(key, newAgent);
+        log.info("Model switched for session [{}]", key);
     }
 
     public int activeRequestCount() {

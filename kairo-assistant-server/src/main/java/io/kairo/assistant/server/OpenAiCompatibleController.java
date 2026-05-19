@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.gateway.ConcurrencyLimitExceededException;
+import io.kairo.assistant.gateway.ModelRegistry;
+import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import java.time.Instant;
@@ -34,12 +36,15 @@ public class OpenAiCompatibleController {
 
     private final UnifiedGateway gateway;
     private final SessionAwareDeltaRouter sessionDeltaRouter;
+    private final ModelSwitchService modelSwitchService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public OpenAiCompatibleController(UnifiedGateway gateway,
-                                      SessionAwareDeltaRouter sessionDeltaRouter) {
+                                      SessionAwareDeltaRouter sessionDeltaRouter,
+                                      ModelSwitchService modelSwitchService) {
         this.gateway = gateway;
         this.sessionDeltaRouter = sessionDeltaRouter;
+        this.modelSwitchService = modelSwitchService;
     }
 
     @SuppressWarnings("unchecked")
@@ -64,6 +69,19 @@ public class OpenAiCompatibleController {
                 : UUID.randomUUID().toString().substring(0, 12);
         SessionKey key = SessionKey.of("openai-api", clientId);
 
+        if (content.startsWith("/model")) {
+            String modelId = content.substring("/model".length()).trim();
+            return handleModelSwitch(key, modelId);
+        }
+
+        String requestModel = (String) request.get("model");
+        if (requestModel != null && !MODEL_ID.equals(requestModel)) {
+            ModelSwitchService.SwitchResult result = modelSwitchService.switchModel(key, requestModel);
+            if (!result.success()) {
+                log.warn("Model switch request failed for [{}]: {}", key, result.message());
+            }
+        }
+
         if (Boolean.TRUE.equals(request.get("stream"))) {
             Flux<String> flux = streamResponse(key, content, clientId);
             return ResponseEntity.ok()
@@ -77,13 +95,21 @@ public class OpenAiCompatibleController {
 
     @GetMapping("/models")
     public Map<String, Object> listModels() {
-        return Map.of(
-                "object", "list",
-                "data", List.of(Map.of(
-                        "id", MODEL_ID,
-                        "object", "model",
-                        "created", Instant.now().getEpochSecond(),
-                        "owned_by", "kairo")));
+        List<Map<String, Object>> models = new java.util.ArrayList<>();
+        models.add(Map.of(
+                "id", MODEL_ID,
+                "object", "model",
+                "created", Instant.now().getEpochSecond(),
+                "owned_by", "kairo"));
+        for (var entry : modelSwitchService.registry().all().entrySet()) {
+            ModelRegistry.ModelSpec spec = entry.getValue();
+            models.add(Map.of(
+                    "id", spec.modelName(),
+                    "object", "model",
+                    "created", Instant.now().getEpochSecond(),
+                    "owned_by", spec.provider()));
+        }
+        return Map.of("object", "list", "data", models);
     }
 
     @GetMapping("/runs")
@@ -92,6 +118,19 @@ public class OpenAiCompatibleController {
                 "active", gateway.activeRequestCount(),
                 "pool_size", gateway.pool().size(),
                 "draining", gateway.isDraining());
+    }
+
+    private ResponseEntity<?> handleModelSwitch(SessionKey key, String modelId) {
+        if (modelId.isEmpty()) {
+            String available = String.join(", ", modelSwitchService.registry().aliases());
+            return ResponseEntity.ok().body(Map.of(
+                    "message", "Available models: " + available));
+        }
+        ModelSwitchService.SwitchResult result = modelSwitchService.switchModel(key, modelId);
+        if (result.success()) {
+            return ResponseEntity.ok().body(Map.of("message", result.message()));
+        }
+        return ResponseEntity.badRequest().body(errorResponse(result.message()));
     }
 
     private Mono<ResponseEntity<Map<String, Object>>> blockingResponse(

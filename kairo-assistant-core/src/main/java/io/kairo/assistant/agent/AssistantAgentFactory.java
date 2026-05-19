@@ -108,16 +108,68 @@ public final class AssistantAgentFactory {
         toolDeps.put("modelProvider", modelProvider);
         toolDeps.put("modelName", config.modelName());
 
-        String skillListing = skillRegistry.list().stream()
-                .map(s -> "- **/" + s.name() + "**: " + s.description())
-                .collect(Collectors.joining("\n"));
-        String systemPrompt = String.format(SYSTEM_PROMPT_TEMPLATE, skillListing);
+        String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
 
-        String customInstructions = loadCustomInstructions(dataPath);
-        if (customInstructions != null && !customInstructions.isBlank()) {
-            systemPrompt += "\n# Custom Instructions\n" + customInstructions + "\n";
+        Agent agent = buildAgent(config, modelProvider, config.modelName(),
+                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+
+        return new AssistantSession(
+                agent, toolRegistry, toolExecutor, memoryStore, cronScheduler,
+                skillRegistry, pluginManager, config);
+    }
+
+    public static Agent createAgentWithModel(AssistantConfig baseConfig,
+                                             String providerName,
+                                             String modelName) {
+        AssistantConfig modelConfig = AssistantConfig.builder()
+                .modelProvider(providerName)
+                .modelName(modelName)
+                .apiKey(null)
+                .dataDir(baseConfig.dataDir())
+                .maxIterations(baseConfig.maxIterations())
+                .timeout(baseConfig.timeout())
+                .tokenBudget(baseConfig.tokenBudget())
+                .compactionTrigger(baseConfig.compactionTrigger())
+                .build();
+
+        Path dataPath = Path.of(baseConfig.dataDir());
+        MemoryStore memoryStore = new FileMemoryStore(dataPath.resolve("memory"));
+
+        DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
+        toolRegistry.scan("io.kairo.assistant.tool");
+        if (toolRegistry.getAll().isEmpty()) {
+            registerAllTools(toolRegistry);
         }
 
+        DefaultToolExecutor toolExecutor =
+                new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
+
+        io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(modelConfig);
+
+        ConversationStore conversationStore = new ConversationStore(
+                dataPath.resolve("conversations"));
+
+        Map<String, Object> toolDeps = new HashMap<>();
+        toolDeps.put("memoryStore", memoryStore);
+        toolDeps.put("conversationStore", conversationStore);
+        toolDeps.put("modelProvider", modelProvider);
+        toolDeps.put("modelName", modelName);
+
+        SkillRegistry skillRegistry = AssistantSkills.createRegistry();
+        String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
+
+        return buildAgent(modelConfig, modelProvider, modelName,
+                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+    }
+
+    private static Agent buildAgent(AssistantConfig config,
+                                    io.kairo.api.model.ModelProvider modelProvider,
+                                    String modelName,
+                                    ToolRegistry toolRegistry,
+                                    DefaultToolExecutor toolExecutor,
+                                    Map<String, Object> toolDeps,
+                                    String systemPrompt,
+                                    MemoryStore memoryStore) {
         float trigger = config.compactionTrigger();
         CompactionThresholds compaction = CompactionThresholds.builder()
                 .triggerPressure(trigger)
@@ -128,26 +180,34 @@ public final class AssistantAgentFactory {
                 .partialPressure(trigger + 0.40f)
                 .build();
 
-        Agent agent =
-                AgentBuilder.create()
-                        .name("kairo-assistant")
-                        .model(modelProvider)
-                        .modelName(config.modelName())
-                        .tools(toolRegistry)
-                        .toolExecutor(toolExecutor)
-                        .toolDependencies(toolDeps)
-                        .systemPrompt(systemPrompt)
-                        .maxIterations(config.maxIterations())
-                        .timeout(config.timeout())
-                        .tokenBudget(config.tokenBudget())
-                        .memoryStore(memoryStore)
-                        .compactionThresholds(compaction)
-                        .streaming(true)
-                        .build();
+        return AgentBuilder.create()
+                .name("kairo-assistant")
+                .model(modelProvider)
+                .modelName(modelName)
+                .tools(toolRegistry)
+                .toolExecutor(toolExecutor)
+                .toolDependencies(toolDeps)
+                .systemPrompt(systemPrompt)
+                .maxIterations(config.maxIterations())
+                .timeout(config.timeout())
+                .tokenBudget(config.tokenBudget())
+                .memoryStore(memoryStore)
+                .compactionThresholds(compaction)
+                .streaming(true)
+                .build();
+    }
 
-        return new AssistantSession(
-                agent, toolRegistry, toolExecutor, memoryStore, cronScheduler,
-                skillRegistry, pluginManager, config);
+    private static String buildSystemPrompt(SkillRegistry skillRegistry, Path dataPath) {
+        String skillListing = skillRegistry.list().stream()
+                .map(s -> "- **/" + s.name() + "**: " + s.description())
+                .collect(Collectors.joining("\n"));
+        String systemPrompt = String.format(SYSTEM_PROMPT_TEMPLATE, skillListing);
+
+        String customInstructions = loadCustomInstructions(dataPath);
+        if (customInstructions != null && !customInstructions.isBlank()) {
+            systemPrompt += "\n# Custom Instructions\n" + customInstructions + "\n";
+        }
+        return systemPrompt;
     }
 
     private static String loadCustomInstructions(Path dataPath) {

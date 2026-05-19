@@ -16,8 +16,10 @@ class OpenAiCompatibleControllerTest {
 
     @BeforeEach
     void setUp() {
+        var gateway = TestFixtures.stubGateway();
         controller = new OpenAiCompatibleController(
-                TestFixtures.stubGateway(), new SessionAwareDeltaRouter());
+                gateway, new SessionAwareDeltaRouter(),
+                TestFixtures.stubModelSwitchService(gateway));
     }
 
     @Test
@@ -107,7 +109,7 @@ class OpenAiCompatibleControllerTest {
 
         @SuppressWarnings("unchecked")
         var data = (List<Map<String, Object>>) result.get("data");
-        assertThat(data).hasSize(1);
+        assertThat(data).hasSizeGreaterThanOrEqualTo(1);
         assertThat(data.get(0).get("id")).isEqualTo("kairo-assistant");
     }
 

@@ -11,6 +11,7 @@ import com.lark.oapi.service.im.v1.model.PatchMessageReq;
 import com.lark.oapi.service.im.v1.model.PatchMessageReqBody;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
 import java.time.Duration;
@@ -33,6 +34,7 @@ public class FeishuStreamRunner implements CommandLineRunner {
 
     private final UnifiedGateway gateway;
     private final SessionAwareDeltaRouter sessionDeltaRouter;
+    private final ModelSwitchService modelSwitchService;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "feishu-patch");
         t.setDaemon(true);
@@ -40,9 +42,12 @@ public class FeishuStreamRunner implements CommandLineRunner {
     });
     private final ConcurrentHashMap<String, Runnable> inProgressTasks = new ConcurrentHashMap<>();
 
-    public FeishuStreamRunner(UnifiedGateway gateway, SessionAwareDeltaRouter sessionDeltaRouter) {
+    public FeishuStreamRunner(UnifiedGateway gateway,
+                              SessionAwareDeltaRouter sessionDeltaRouter,
+                              ModelSwitchService modelSwitchService) {
         this.gateway = gateway;
         this.sessionDeltaRouter = sessionDeltaRouter;
+        this.modelSwitchService = modelSwitchService;
     }
 
     @Override
@@ -116,6 +121,22 @@ public class FeishuStreamRunner implements CommandLineRunner {
                 log.info("Feishu inbound from [{}] in chat [{}]({}): {}", senderOpenId, chatId,
                         isGroup ? "group" : "p2p",
                         text.length() > 100 ? text.substring(0, 100) + "..." : text);
+
+                if (text.startsWith("/model")) {
+                    SessionKey key = SessionKey.of("feishu", sessionDest);
+                    String modelId = text.substring("/model".length()).trim();
+                    String reply;
+                    if (modelId.isEmpty()) {
+                        reply = "Available models: " + String.join(", ",
+                                modelSwitchService.registry().aliases());
+                    } else {
+                        ModelSwitchService.SwitchResult result =
+                                modelSwitchService.switchModel(key, modelId);
+                        reply = result.message();
+                    }
+                    sendInitialMessage(apiClient, chatId, reply);
+                    return;
+                }
 
                 cancelInProgress(sessionDest);
 

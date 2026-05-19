@@ -100,6 +100,21 @@ public class AgentSessionPool {
         }
     }
 
+    public Agent replace(SessionKey key, Agent newAgent) {
+        lock.writeLock().lock();
+        try {
+            PoolEntry old = pool.remove(key);
+            pool.put(key, new PoolEntry(newAgent, Instant.now()));
+            if (old != null) {
+                old.agent().interrupt();
+            }
+            log.info("Replaced agent session [{}]", key);
+            return newAgent;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     public int size() {
         lock.readLock().lock();
         try {
