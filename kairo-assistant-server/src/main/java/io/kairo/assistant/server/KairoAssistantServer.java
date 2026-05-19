@@ -14,6 +14,8 @@ import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.assistant.goal.Goal;
 import io.kairo.assistant.goal.GoalScheduler;
 import io.kairo.assistant.goal.GoalStore;
+import io.kairo.assistant.security.OutputScanner;
+import io.kairo.assistant.security.UserPairing;
 import io.kairo.assistant.tool.GoalTool;
 import io.kairo.core.agent.DefaultReActAgent;
 import java.nio.file.Path;
@@ -118,6 +120,21 @@ public class KairoAssistantServer {
                 log.error("Goal [{}] execution failed: {}", goal.id(), e.getMessage());
             }
         }, zone);
+    }
+
+    @Bean
+    public UserPairing userPairing(AssistantSession session) {
+        Path dataDir = Path.of(session.config().dataDir());
+        boolean enabled = Boolean.parseBoolean(
+                System.getenv().getOrDefault("KAIRO_PAIRING_ENABLED", "false"));
+        return new UserPairing(dataDir, enabled);
+    }
+
+    @Bean
+    public OutputScanner outputScanner() {
+        boolean enabled = Boolean.parseBoolean(
+                System.getenv().getOrDefault("KAIRO_SECURITY_SCAN", "true"));
+        return new OutputScanner(enabled);
     }
 
     @Bean
