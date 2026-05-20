@@ -1,19 +1,29 @@
 package io.kairo.assistant.agent;
 
 import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.SubagentRegistry;
+import io.kairo.api.mcp.McpPlugin;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.model.ModelConfig;
 import io.kairo.api.plugin.PluginManager;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.assistant.skill.AssistantSkills;
+import io.kairo.mcp.spi.DefaultMcpPlugin;
 import io.kairo.plugin.ComponentRegistrar;
 import io.kairo.plugin.DefaultPluginManager;
 import io.kairo.plugin.DefaultPluginRegistry;
+import io.kairo.plugin.DefaultSubagentRegistry;
 import io.kairo.plugin.KairoComponentRegistrar;
 import io.kairo.plugin.PluginEnvironment;
 import io.kairo.plugin.PluginLoader;
+import io.kairo.plugin.hook.HookExecutor;
+import io.kairo.plugin.hook.handlers.AgentHookActionHandler;
+import io.kairo.plugin.hook.handlers.McpToolHookActionHandler;
+import io.kairo.plugin.hook.handlers.PromptHookActionHandler;
 import io.kairo.plugin.installer.PluginCacheManager;
+import io.kairo.plugin.mcp.PluginMcpRegistrar;
 import io.kairo.plugin.source.GitHubSourceFetcher;
 import io.kairo.plugin.source.GitSubdirSourceFetcher;
 import io.kairo.plugin.source.GitUrlSourceFetcher;
@@ -111,7 +121,8 @@ public final class AssistantAgentFactory {
 
         SkillRegistry skillRegistry = AssistantSkills.createRegistry();
 
-        PluginManager pluginManager = buildPluginManager(skillRegistry, dataPath);
+        PluginRuntime pluginRuntime =
+                buildPluginRuntime(skillRegistry, dataPath, modelProvider, config);
 
         ConversationStore conversationStore = new ConversationStore(
                 dataPath.resolve("conversations"));
@@ -121,6 +132,8 @@ public final class AssistantAgentFactory {
         toolDeps.put("conversationStore", conversationStore);
         toolDeps.put("modelProvider", modelProvider);
         toolDeps.put("modelName", config.modelName());
+        toolDeps.put("subagentRegistry", pluginRuntime.subagentRegistry());
+        toolDeps.put("pluginHookCatalog", pluginRuntime.hookCatalog());
 
         String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
 
@@ -128,8 +141,18 @@ public final class AssistantAgentFactory {
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
 
         return new AssistantSession(
-                agent, toolRegistry, toolExecutor, memoryStore, cronScheduler,
-                skillRegistry, pluginManager, config);
+                agent,
+                toolRegistry,
+                toolExecutor,
+                memoryStore,
+                cronScheduler,
+                skillRegistry,
+                pluginRuntime.pluginManager(),
+                pluginRuntime.subagentRegistry(),
+                pluginRuntime.mcpPlugin(),
+                pluginRuntime.hookExecutor(),
+                pluginRuntime.hookCatalog(),
+                config);
     }
 
     public static Agent createAgentWithModel(AssistantConfig baseConfig,
@@ -177,16 +200,29 @@ public final class AssistantAgentFactory {
     }
 
     /**
-     * Builds a {@link DefaultPluginManager} configured with all five remote source fetchers and a
-     * {@link KairoComponentRegistrar} that wires plugin contributions into this assistant's
-     * skill / MCP / bin chains.
+     * Builds the full plugin runtime, returning a bundle of the {@link PluginManager} plus the
+     * supporting objects whose lifetimes must match the assistant session:
+     *
+     * <ul>
+     *   <li>{@link McpPlugin} — production {@link DefaultMcpPlugin} that actually forks stdio
+     *       subprocesses for plugin-declared {@code mcpServers}. Must be {@link McpPlugin#close()
+     *       closed} on session shutdown so subprocesses die.
+     *   <li>{@link SubagentRegistry} — receives every plugin's {@code agents/*.md}.
+     *   <li>{@link HookExecutor} — wired with {@link PromptHookActionHandler}, {@link
+     *       AgentHookActionHandler}, and {@link McpToolHookActionHandler} so plugin hooks beyond
+     *       the built-in {@code command} / {@code http} actually execute.
+     *   <li>{@link PluginHookCatalog} — subscribes to {@link PluginManager#events()} and indexes
+     *       hooks by event name so runtime code can dispatch them.
+     * </ul>
      *
      * <p>Plugins live under {@code <dataDir>/plugins/} — cache at {@code cache/}, persistent
-     * per-plugin data at {@code data/}. The MCP bridge is left null in the registrar for now
-     * (kairo-assistant doesn't expose an MCP runtime yet at this layer); plugin-declared MCP
-     * servers will become active once the assistant ships its own MCP plugin.
+     * per-plugin data at {@code data/}.
      */
-    private static PluginManager buildPluginManager(SkillRegistry skillRegistry, Path dataPath) {
+    private static PluginRuntime buildPluginRuntime(
+            SkillRegistry skillRegistry,
+            Path dataPath,
+            io.kairo.api.model.ModelProvider modelProvider,
+            AssistantConfig config) {
         Path pluginRoot = dataPath.resolve("plugins");
         Path cacheRoot = pluginRoot.resolve("cache");
         Path dataRoot = pluginRoot.resolve("data");
@@ -207,12 +243,83 @@ public final class AssistantAgentFactory {
                         .register(new GitSubdirSourceFetcher(cache))
                         .register(new NpmSourceFetcher(cache, http));
 
-        ComponentRegistrar registrar =
-                new KairoComponentRegistrar(skillRegistry, null, new PluginEnvironment());
+        // Gap 1: real MCP bridge — DefaultMcpPlugin forks subprocesses, PluginMcpRegistrar wires
+        // per-plugin mcpServers onto it.
+        McpPlugin mcpPlugin = new DefaultMcpPlugin();
+        PluginMcpRegistrar mcpRegistrar = new PluginMcpRegistrar(mcpPlugin);
 
-        return new DefaultPluginManager(
-                new DefaultPluginRegistry(), new PluginLoader(), dataRoot, registrar, fetchers);
+        // Gap 2: subagents — every agents/*.md ends up addressable by qualified name.
+        SubagentRegistry subagentRegistry = new DefaultSubagentRegistry();
+
+        ComponentRegistrar registrar =
+                new KairoComponentRegistrar(
+                        skillRegistry, mcpRegistrar, new PluginEnvironment(), subagentRegistry);
+
+        PluginManager pluginManager =
+                new DefaultPluginManager(
+                        new DefaultPluginRegistry(),
+                        new PluginLoader(),
+                        dataRoot,
+                        registrar,
+                        fetchers);
+
+        // Gap 3: hook executor + per-event catalog. Handlers are reactive and reuse the assistant's
+        // ModelProvider / config so plugin authors see the same model behaviour as the agent.
+        HookExecutor hookExecutor = buildHookExecutor(modelProvider, config);
+        PluginHookCatalog hookCatalog = new PluginHookCatalog(pluginManager, hookExecutor);
+
+        return new PluginRuntime(
+                pluginManager, mcpPlugin, subagentRegistry, hookExecutor, hookCatalog);
     }
+
+    /**
+     * Builds a {@link HookExecutor} with all three non-builtin action handlers wired. The {@code
+     * agent} and {@code mcp_tool} adapters are intentionally minimal in this revision — they
+     * return "no-op" results that surface their inputs in the hook output, which still lets plugin
+     * authors reason about wiring without unblocking on full subagent / cross-plugin tool routing.
+     * Plugging a real agent runner and MCP-tool dispatcher is the next planned increment.
+     */
+    private static HookExecutor buildHookExecutor(
+            io.kairo.api.model.ModelProvider modelProvider, AssistantConfig config) {
+        ModelConfig defaultModel =
+                ModelConfig.builder()
+                        .model(config.modelName())
+                        .systemPrompt("You are a Kairo plugin hook evaluator.")
+                        .build();
+
+        HookExecutor executor = new HookExecutor();
+        executor.withHandler(new PromptHookActionHandler(modelProvider, defaultModel));
+        executor.withHandler(
+                new AgentHookActionHandler(
+                        (prompt, modelHint) ->
+                                reactor.core.publisher.Mono.just(
+                                        "{\"comment\":\"agent action not yet bound — prompt was:"
+                                                + " "
+                                                + (prompt == null
+                                                        ? ""
+                                                        : prompt.replace("\"", "\\\""))
+                                                + "\"}")));
+        executor.withHandler(
+                new McpToolHookActionHandler(
+                        (server, tool, input) ->
+                                reactor.core.publisher.Mono.just(
+                                        io.kairo.api.tool.ToolResult.success(
+                                                "hook-mcp-noop",
+                                                "{\"server\":\""
+                                                        + server
+                                                        + "\",\"tool\":\""
+                                                        + tool
+                                                        + "\",\"received\":true}"))));
+        return executor;
+    }
+
+    /** Bundle returned by {@link #buildPluginRuntime} — lets the session own every lifetime. */
+    record PluginRuntime(
+            PluginManager pluginManager,
+            McpPlugin mcpPlugin,
+            SubagentRegistry subagentRegistry,
+            HookExecutor hookExecutor,
+            PluginHookCatalog hookCatalog) {}
 
     private static Agent buildAgent(AssistantConfig config,
                                     io.kairo.api.model.ModelProvider modelProvider,
