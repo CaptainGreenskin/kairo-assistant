@@ -95,3 +95,14 @@ function coerceSkill(s: unknown): SkillSummary {
       typeof obj.description === "string" ? obj.description : undefined,
   };
 }
+
+/** Generic HTTP helpers used by feature modules outside of cron. */
+export const api = {
+  get: <T>(url: string) => request<T>(url),
+  post: <T>(url: string, body?: unknown) =>
+    request<T>(url, {
+      method: "POST",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  del: <T>(url: string) => request<T>(url, { method: "DELETE" }),
+};

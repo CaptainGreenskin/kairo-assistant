@@ -1,22 +1,23 @@
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { TaskListPage } from "./pages/TaskListPage";
 import { TaskCreatePage } from "./pages/TaskCreatePage";
+import { EvolutionPage } from "./pages/EvolutionPage";
 
 export function App() {
   const loc = useLocation();
-  const tab = loc.pathname.startsWith("/create") ? "create" : "list";
+  const tab = loc.pathname.startsWith("/create")
+    ? "create"
+    : loc.pathname.startsWith("/evolution")
+    ? "evolution"
+    : "list";
   return (
     <div className="min-h-full flex flex-col">
       <header className="bg-surface border-b border-border px-6 py-3 flex items-center gap-6">
         <h1 className="text-base font-semibold tracking-tight">
-          Kairo Cron <span className="text-text-dim font-normal">· scheduled tasks</span>
+          Kairo Console <span className="text-text-dim font-normal">· cron + evolution</span>
         </h1>
         <nav className="flex gap-1 text-sm">
-          <Link
-            to="/"
-            className={tabClass(tab === "list")}
-            data-active={tab === "list"}
-          >
+          <Link to="/" className={tabClass(tab === "list")} data-active={tab === "list"}>
             Tasks
           </Link>
           <Link
@@ -25,6 +26,13 @@ export function App() {
             data-active={tab === "create"}
           >
             New task
+          </Link>
+          <Link
+            to="/evolution"
+            className={tabClass(tab === "evolution")}
+            data-active={tab === "evolution"}
+          >
+            Evolution
           </Link>
         </nav>
         <a
@@ -38,6 +46,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<TaskListPage />} />
           <Route path="/create" element={<TaskCreatePage />} />
+          <Route path="/evolution" element={<EvolutionPage />} />
         </Routes>
       </main>
     </div>
