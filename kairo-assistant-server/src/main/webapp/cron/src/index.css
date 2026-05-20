@@ -2,10 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
+/* -----------------------------------------------------------------
+ * Theme tokens
+ *
+ * Every UI color is referenced through a CSS variable so themes can be
+ * swapped at runtime by setting `data-theme` on <html>. To add a new theme:
+ * register it in src/hooks/useTheme.tsx and add a corresponding
+ * `[data-theme="<id>"]` block below.
+ * --------------------------------------------------------------- */
+
+:root,
+[data-theme="hermes"] {
+  /* Default — a calmer cyan/teal palette inspired by the Hermes HUD */
+  --kc-bg: #0e1726;
+  --kc-surface: #122236;
+  --kc-primary: #1c3a5e;
+  --kc-accent: #2dd4bf;
+  --kc-accent-hover: #14b8a6;
+  --kc-text: #e5e7eb;
+  --kc-text-dim: #94a3b8;
+  --kc-border: #233556;
+  --kc-success: #10b981;
+  --kc-warn: #f59e0b;
+}
+
+[data-theme="midnight"] {
+  /* Original Kairo dark palette */
+  --kc-bg: #1a1a2e;
+  --kc-surface: #16213e;
+  --kc-primary: #0f3460;
+  --kc-accent: #e94560;
+  --kc-accent-hover: #d63850;
+  --kc-text: #eaeaea;
+  --kc-text-dim: #a0a0a0;
+  --kc-border: #2a3a5c;
+  --kc-success: #4caf50;
+  --kc-warn: #ff9800;
+}
+
+[data-theme="terminal"] {
+  /* Green-on-black terminal vibes */
+  --kc-bg: #050a05;
+  --kc-surface: #0a140a;
+  --kc-primary: #0d1f0d;
+  --kc-accent: #4ade80;
+  --kc-accent-hover: #22c55e;
+  --kc-text: #d1ffd1;
+  --kc-text-dim: #6b8e6b;
+  --kc-border: #143514;
+  --kc-success: #22c55e;
+  --kc-warn: #eab308;
+}
+
 html,
 body,
 #root {
   height: 100%;
+  background: var(--kc-bg);
+  color: var(--kc-text);
 }
 
 body {
@@ -15,19 +69,17 @@ body {
   font-size: 14px;
 }
 
-/* Pretty scrollbar in the dark theme so the cron task list doesn't look like
-   a beige Windows 95 control. */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: theme("colors.surface");
+  background: var(--kc-surface);
 }
 ::-webkit-scrollbar-thumb {
-  background: theme("colors.border");
+  background: var(--kc-border);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: theme("colors.primary");
+  background: var(--kc-accent);
 }
