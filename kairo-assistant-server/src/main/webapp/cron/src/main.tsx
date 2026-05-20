@@ -9,8 +9,9 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Cron tasks are slow-moving; refetch every 10s + on focus.
-      refetchInterval: 10_000,
+      // SSE drives invalidation (see useEventStream); we keep a slow
+      // fallback poll in case the stream is wedged (proxy issues, etc.).
+      refetchInterval: 60_000,
       refetchOnWindowFocus: true,
       retry: 1,
     },

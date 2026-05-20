@@ -26,10 +26,15 @@ public class CronController {
 
     private final AssistantSession session;
     private final EventBroadcaster broadcaster;
+    private final DashboardEventPublisher dashboard;
 
-    public CronController(AssistantSession session, EventBroadcaster broadcaster) {
+    public CronController(
+            AssistantSession session,
+            EventBroadcaster broadcaster,
+            DashboardEventPublisher dashboard) {
         this.session = session;
         this.broadcaster = broadcaster;
+        this.dashboard = dashboard;
     }
 
     @GetMapping
@@ -77,6 +82,7 @@ public class CronController {
             return Map.of("error", e.getMessage());
         }
         broadcaster.broadcast(Map.of("type", "cron_created", "id", task.id(), "cron", task.cron()));
+        dashboard.cron("cron.created", task.id());
         Map<String, Object> result = new LinkedHashMap<>(toView(task));
         result.put("status", "created");
         return result;
@@ -94,7 +100,10 @@ public class CronController {
         try {
             return session.cronScheduler()
                     .edit(taskId, newCron, newPrompt)
-                    .map(this::toView)
+                    .map(t -> {
+                        dashboard.cron("cron.edited", t.id());
+                        return toView(t);
+                    })
                     .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
         } catch (IllegalArgumentException e) {
             return Map.of("error", e.getMessage());
@@ -105,7 +114,10 @@ public class CronController {
     public Map<String, Object> pause(@PathVariable String taskId) {
         return session.cronScheduler()
                 .pause(taskId)
-                .map(this::toView)
+                .map(t -> {
+                    dashboard.cron("cron.paused", t.id());
+                    return toView(t);
+                })
                 .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
     }
 
@@ -113,13 +125,19 @@ public class CronController {
     public Map<String, Object> resume(@PathVariable String taskId) {
         return session.cronScheduler()
                 .resume(taskId)
-                .map(this::toView)
+                .map(t -> {
+                    dashboard.cron("cron.resumed", t.id());
+                    return toView(t);
+                })
                 .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
     }
 
     @PostMapping("/{taskId}/trigger")
     public Map<String, Object> trigger(@PathVariable String taskId) {
         boolean fired = session.cronScheduler().trigger(taskId);
+        if (fired) {
+            dashboard.cron("cron.triggered", taskId);
+        }
         return fired
                 ? Map.of("status", "triggered", "id", taskId)
                 : Map.of("error", "task not found", "id", taskId);
@@ -130,6 +148,7 @@ public class CronController {
         boolean deleted = session.cronScheduler().delete(taskId);
         if (deleted) {
             broadcaster.broadcast(Map.of("type", "cron_deleted", "id", taskId));
+            dashboard.cron("cron.deleted", taskId);
             return Map.of("status", "deleted", "id", taskId);
         }
         return Map.of("error", "task not found", "id", taskId);

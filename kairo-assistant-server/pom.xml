@@ -26,6 +26,17 @@
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-spring-boot-starter-evolution</artifactId>
         </dependency>
+        <!--
+            event-stream SPI (transport-agnostic). We deliberately do NOT pull in
+            kairo-spring-boot-starter-event-stream because its bundled SSE/WS
+            controllers are written for Spring WebFlux; this server runs Spring MVC.
+            Instead we wire the SPI beans + an MVC-native SseEmitter controller in
+            AssistantEventStreamConfig.
+        -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-event-stream</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

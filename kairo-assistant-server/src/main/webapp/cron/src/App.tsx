@@ -2,8 +2,13 @@ import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { TaskListPage } from "./pages/TaskListPage";
 import { TaskCreatePage } from "./pages/TaskCreatePage";
 import { EvolutionPage } from "./pages/EvolutionPage";
+import { useEventStream } from "./hooks/useEventStream";
 
 export function App() {
+  // One SSE subscription per app instance; pushes invalidations to React Query
+  // so cron + evolution tabs reflect mutations sub-second instead of waiting
+  // on the 60s fallback poll.
+  useEventStream();
   const loc = useLocation();
   const tab = loc.pathname.startsWith("/create")
     ? "create"

@@ -4,10 +4,12 @@ import { evolutionApi } from "../api/evolution";
 const SKILLS_KEY = ["evolution", "skills"];
 
 export function useEvolutionSkills() {
+  // refetchInterval is inherited from QueryClient defaults (60s fallback);
+  // sub-second freshness comes from useEventStream invalidating this query
+  // on every "evolution.*" SSE event.
   return useQuery({
     queryKey: SKILLS_KEY,
     queryFn: evolutionApi.listSkills,
-    refetchInterval: 8000,
   });
 }
 

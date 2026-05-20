@@ -43,9 +43,11 @@ class EvolutionRestControllerConfig {
     static class Endpoints {
 
         private final EvolutionController controller;
+        private final DashboardEventPublisher dashboard;
 
-        Endpoints(EvolutionController controller) {
+        Endpoints(EvolutionController controller, DashboardEventPublisher dashboard) {
             this.controller = controller;
+            this.dashboard = dashboard;
         }
 
         @GetMapping("/skills")
@@ -65,29 +67,41 @@ class EvolutionRestControllerConfig {
 
         @PostMapping("/skills/{name}/pin")
         public Map<String, Object> pin(@PathVariable String name) {
-            return toView(null, controller.pin(name).block());
+            Map<String, Object> view = toView(null, controller.pin(name).block());
+            dashboard.evolution("evolution.pinned", name);
+            return view;
         }
 
         @PostMapping("/skills/{name}/unpin")
         public Map<String, Object> unpin(@PathVariable String name) {
-            return toView(null, controller.unpin(name).block());
+            Map<String, Object> view = toView(null, controller.unpin(name).block());
+            dashboard.evolution("evolution.unpinned", name);
+            return view;
         }
 
         @PostMapping("/skills/{name}/archive")
         public Map<String, Object> archive(@PathVariable String name) {
-            return toView(null, controller.archive(name).block());
+            Map<String, Object> view = toView(null, controller.archive(name).block());
+            dashboard.evolution("evolution.archived", name);
+            return view;
         }
 
         @PostMapping("/curator/run")
         public Map<String, Object> runCurator(
                 @RequestParam(name = "dry", defaultValue = "true") boolean dry) {
             UmbrellaConsolidationPlanner.PlanResult result = controller.runCurator(dry).block();
+            if (!dry && result != null && result.totalChanged() > 0) {
+                dashboard.evolution("evolution.curator-run");
+            }
             return resultToJson(result);
         }
 
         @PostMapping("/curator/lifecycle/run")
         public Map<String, Object> runLifecycle() {
             LifecycleTransitionResult r = controller.runLifecycle().block();
+            if (r != null && r.totalChanged() > 0) {
+                dashboard.evolution("evolution.lifecycle-run");
+            }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("runAt", r.runAt().toString());
             out.put("checked", r.checked());

@@ -32,6 +32,11 @@ final class TestFixtures {
 
     private TestFixtures() {}
 
+    /** No-op dashboard publisher — discards every event. */
+    static DashboardEventPublisher noopDashboard() {
+        return new DashboardEventPublisher(new io.kairo.core.event.DefaultKairoEventBus());
+    }
+
     static AssistantConfig defaultConfig() {
         return AssistantConfig.builder()
                 .apiKey("test-key")

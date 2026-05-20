@@ -22,7 +22,7 @@ class CronControllerTest {
     void setUp() {
         cronScheduler = new InMemoryCronScheduler();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        controller = new CronController(session, EventBroadcaster.noop());
+        controller = new CronController(session, EventBroadcaster.noop(), TestFixtures.noopDashboard());
     }
 
     @Test
@@ -92,7 +92,7 @@ class CronControllerTest {
     void createBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        var broadcastingController = new CronController(session, events::add);
+        var broadcastingController = new CronController(session, events::add, TestFixtures.noopDashboard());
 
         broadcastingController.create(Map.of("cron", "0 9 * * *", "prompt", "test"));
 
@@ -105,7 +105,7 @@ class CronControllerTest {
     void deleteBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        var broadcastingController = new CronController(session, events::add);
+        var broadcastingController = new CronController(session, events::add, TestFixtures.noopDashboard());
 
         var created = broadcastingController.create(Map.of("cron", "0 9 * * *", "prompt", "test"));
         String id = (String) created.get("id");
