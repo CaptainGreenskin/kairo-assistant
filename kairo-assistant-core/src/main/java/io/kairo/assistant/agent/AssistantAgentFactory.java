@@ -122,7 +122,13 @@ public final class AssistantAgentFactory {
         SkillRegistry skillRegistry = AssistantSkills.createRegistry();
 
         PluginRuntime pluginRuntime =
-                buildPluginRuntime(skillRegistry, dataPath, modelProvider, config);
+                buildPluginRuntime(
+                        skillRegistry,
+                        dataPath,
+                        modelProvider,
+                        config,
+                        toolRegistry,
+                        toolExecutor);
 
         ConversationStore conversationStore = new ConversationStore(
                 dataPath.resolve("conversations"));
@@ -137,8 +143,12 @@ public final class AssistantAgentFactory {
 
         String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
 
+        // Bridge plugin hooks onto the agent's lifecycle so PreToolUse/PostToolUse/SessionStart/
+        // SessionEnd/Stop fire automatically via PluginHookCatalog.
+        PluginHookBridge hookBridge = new PluginHookBridge(pluginRuntime.hookCatalog());
+
         Agent agent = buildAgent(config, modelProvider, config.modelName(),
-                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore, hookBridge);
 
         return new AssistantSession(
                 agent,
@@ -222,7 +232,9 @@ public final class AssistantAgentFactory {
             SkillRegistry skillRegistry,
             Path dataPath,
             io.kairo.api.model.ModelProvider modelProvider,
-            AssistantConfig config) {
+            AssistantConfig config,
+            ToolRegistry toolRegistry,
+            io.kairo.core.tool.DefaultToolExecutor toolExecutor) {
         Path pluginRoot = dataPath.resolve("plugins");
         Path cacheRoot = pluginRoot.resolve("cache");
         Path dataRoot = pluginRoot.resolve("data");
@@ -264,8 +276,10 @@ public final class AssistantAgentFactory {
                         fetchers);
 
         // Gap 3: hook executor + per-event catalog. Handlers are reactive and reuse the assistant's
-        // ModelProvider / config so plugin authors see the same model behaviour as the agent.
-        HookExecutor hookExecutor = buildHookExecutor(modelProvider, config);
+        // ModelProvider / tools / MCP plumbing so plugin hook authors see the same runtime as the
+        // agent itself.
+        HookExecutor hookExecutor =
+                buildHookExecutor(modelProvider, config, toolRegistry, toolExecutor, mcpRegistrar);
         PluginHookCatalog hookCatalog = new PluginHookCatalog(pluginManager, hookExecutor);
 
         return new PluginRuntime(
@@ -273,14 +287,24 @@ public final class AssistantAgentFactory {
     }
 
     /**
-     * Builds a {@link HookExecutor} with all three non-builtin action handlers wired. The {@code
-     * agent} and {@code mcp_tool} adapters are intentionally minimal in this revision — they
-     * return "no-op" results that surface their inputs in the hook output, which still lets plugin
-     * authors reason about wiring without unblocking on full subagent / cross-plugin tool routing.
-     * Plugging a real agent runner and MCP-tool dispatcher is the next planned increment.
+     * Builds a {@link HookExecutor} with all three non-builtin action handlers wired against the
+     * assistant's real runtime:
+     *
+     * <ul>
+     *   <li>{@code prompt} → {@link PromptHookActionHandler} hits the assistant's {@link
+     *       io.kairo.api.model.ModelProvider} directly for a single-call decision.
+     *   <li>{@code agent}  → {@link SubagentAgentRunner} spawns a fresh, short-lived sub-agent so
+     *       the hook can reason with full tool access without polluting the user-facing session.
+     *   <li>{@code mcp_tool} → {@link PluginMcpToolDispatcher} routes through any stdio MCP
+     *       subprocess registered by another enabled plugin (cross-plugin tool calls).
+     * </ul>
      */
     private static HookExecutor buildHookExecutor(
-            io.kairo.api.model.ModelProvider modelProvider, AssistantConfig config) {
+            io.kairo.api.model.ModelProvider modelProvider,
+            AssistantConfig config,
+            ToolRegistry toolRegistry,
+            io.kairo.core.tool.DefaultToolExecutor toolExecutor,
+            PluginMcpRegistrar mcpRegistrar) {
         ModelConfig defaultModel =
                 ModelConfig.builder()
                         .model(config.modelName())
@@ -291,25 +315,13 @@ public final class AssistantAgentFactory {
         executor.withHandler(new PromptHookActionHandler(modelProvider, defaultModel));
         executor.withHandler(
                 new AgentHookActionHandler(
-                        (prompt, modelHint) ->
-                                reactor.core.publisher.Mono.just(
-                                        "{\"comment\":\"agent action not yet bound — prompt was:"
-                                                + " "
-                                                + (prompt == null
-                                                        ? ""
-                                                        : prompt.replace("\"", "\\\""))
-                                                + "\"}")));
-        executor.withHandler(
-                new McpToolHookActionHandler(
-                        (server, tool, input) ->
-                                reactor.core.publisher.Mono.just(
-                                        io.kairo.api.tool.ToolResult.success(
-                                                "hook-mcp-noop",
-                                                "{\"server\":\""
-                                                        + server
-                                                        + "\",\"tool\":\""
-                                                        + tool
-                                                        + "\",\"received\":true}"))));
+                        new SubagentAgentRunner(
+                                modelProvider,
+                                config.modelName(),
+                                toolRegistry,
+                                toolExecutor,
+                                null)));
+        executor.withHandler(new McpToolHookActionHandler(new PluginMcpToolDispatcher(mcpRegistrar)));
         return executor;
     }
 
@@ -329,6 +341,19 @@ public final class AssistantAgentFactory {
                                     Map<String, Object> toolDeps,
                                     String systemPrompt,
                                     MemoryStore memoryStore) {
+        return buildAgent(config, modelProvider, modelName, toolRegistry, toolExecutor, toolDeps,
+                systemPrompt, memoryStore, null);
+    }
+
+    private static Agent buildAgent(AssistantConfig config,
+                                    io.kairo.api.model.ModelProvider modelProvider,
+                                    String modelName,
+                                    ToolRegistry toolRegistry,
+                                    DefaultToolExecutor toolExecutor,
+                                    Map<String, Object> toolDeps,
+                                    String systemPrompt,
+                                    MemoryStore memoryStore,
+                                    Object pluginHookHandler) {
         float trigger = config.compactionTrigger();
         CompactionThresholds compaction = CompactionThresholds.builder()
                 .triggerPressure(trigger)
@@ -339,7 +364,7 @@ public final class AssistantAgentFactory {
                 .partialPressure(trigger + 0.40f)
                 .build();
 
-        return AgentBuilder.create()
+        AgentBuilder builder = AgentBuilder.create()
                 .name("kairo-assistant")
                 .model(modelProvider)
                 .modelName(modelName)
@@ -352,8 +377,11 @@ public final class AssistantAgentFactory {
                 .tokenBudget(config.tokenBudget())
                 .memoryStore(memoryStore)
                 .compactionThresholds(compaction)
-                .streaming(true)
-                .build();
+                .streaming(true);
+        if (pluginHookHandler != null) {
+            builder = builder.hook(pluginHookHandler);
+        }
+        return builder.build();
     }
 
     private static String buildSystemPrompt(SkillRegistry skillRegistry, Path dataPath) {
