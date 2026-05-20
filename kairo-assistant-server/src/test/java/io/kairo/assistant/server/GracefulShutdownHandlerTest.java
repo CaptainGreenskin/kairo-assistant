@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.agent.Agent;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -30,8 +31,7 @@ class GracefulShutdownHandlerTest {
         };
 
         var session = createSession(agent, cron);
-        var handler = new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector());
-        handler.onShutdown();
+        createHandler(session).onShutdown();
 
         assertTrue(interrupted.get());
         assertTrue(cronStopped.get());
@@ -43,7 +43,7 @@ class GracefulShutdownHandlerTest {
             @Override public void interrupt() { throw new RuntimeException("interrupt failed"); }
         };
         var session = createSession(agent, new TestFixtures.StubCronScheduler());
-        var handler = new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector());
+        var handler = createHandler(session);
         assertDoesNotThrow(handler::onShutdown);
     }
 
@@ -53,7 +53,7 @@ class GracefulShutdownHandlerTest {
             @Override public void stop() { throw new RuntimeException("stop failed"); }
         };
         var session = createSession(new TestFixtures.StubAgent(), cron);
-        var handler = new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector());
+        var handler = createHandler(session);
         assertDoesNotThrow(handler::onShutdown);
     }
 
@@ -64,7 +64,7 @@ class GracefulShutdownHandlerTest {
             @Override public void interrupt() { interruptCount.incrementAndGet(); }
         };
         var session = createSession(agent, new TestFixtures.StubCronScheduler());
-        new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector()).onShutdown();
+        createHandler(session).onShutdown();
         assertTrue(interruptCount.get() >= 1);
     }
 
@@ -77,9 +77,18 @@ class GracefulShutdownHandlerTest {
     @Test
     void shutdownCanBeCalledTwice() {
         var session = createSession(new TestFixtures.StubAgent(), new TestFixtures.StubCronScheduler());
-        var handler = new GracefulShutdownHandler(session, new SessionManager(session), new MetricsCollector());
+        var handler = createHandler(session);
         assertDoesNotThrow(handler::onShutdown);
         assertDoesNotThrow(handler::onShutdown);
+    }
+
+    private GracefulShutdownHandler createHandler(AssistantSession session) {
+        var gateway = TestFixtures.stubGateway(session.agent());
+        var sessionManager = new SessionManager(session);
+        var metrics = new MetricsCollector();
+        var wsHandler = new AssistantWebSocketHandler(session, gateway,
+                new SessionAwareDeltaRouter(), sessionManager, metrics, new StreamingDeltaRouter());
+        return new GracefulShutdownHandler(session, gateway, sessionManager, metrics, wsHandler);
     }
 
     private AssistantSession createSession(Agent agent, CronScheduler cron) {
@@ -89,7 +98,7 @@ class GracefulShutdownHandlerTest {
         return new AssistantSession(
                 agent, toolRegistry, new TestFixtures.StubToolExecutor(),
                 new InMemoryStore(), cron, skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
     }
 }

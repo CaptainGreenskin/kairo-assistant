@@ -120,24 +120,68 @@ public class ConversationStore {
     }
 
     public List<Map<String, Object>> search(String query) {
+        return search(query, 50);
+    }
+
+    public List<Map<String, Object>> search(String query, int limit) {
         List<Map<String, Object>> results = new ArrayList<>();
         String lowerQuery = query.toLowerCase();
 
         try (var stream = Files.list(baseDir)) {
             stream.filter(p -> p.toString().endsWith(".jsonl"))
+                    .sorted((a, b) -> {
+                        try {
+                            return Files.getLastModifiedTime(b).compareTo(
+                                    Files.getLastModifiedTime(a));
+                        } catch (IOException e) {
+                            return 0;
+                        }
+                    })
                     .forEach(file -> {
+                        if (results.size() >= limit) return;
                         String sessionId = file.getFileName().toString().replace(".jsonl", "");
                         try {
-                            for (String line : Files.readAllLines(file)) {
+                            List<String> lines = Files.readAllLines(file);
+                            List<Map<String, Object>> messages = new ArrayList<>();
+                            for (String line : lines) {
                                 if (line.isBlank()) continue;
-                                if (line.toLowerCase().contains(lowerQuery)) {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> entry = mapper.readValue(line, Map.class);
-                                    if ("message".equals(entry.get("type"))) {
-                                        Map<String, Object> result = new LinkedHashMap<>(entry);
-                                        result.put("sessionId", sessionId);
-                                        results.add(result);
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> entry = mapper.readValue(line, Map.class);
+                                if ("message".equals(entry.get("type"))) {
+                                    messages.add(entry);
+                                }
+                            }
+                            for (int i = 0; i < messages.size() && results.size() < limit; i++) {
+                                Map<String, Object> msg = messages.get(i);
+                                String content = (String) msg.get("content");
+                                if (content == null) continue;
+                                if (content.toLowerCase().contains(lowerQuery)) {
+                                    Map<String, Object> result = new LinkedHashMap<>();
+                                    result.put("sessionId", sessionId);
+                                    String title = getTitle(sessionId);
+                                    if (title != null) result.put("sessionTitle", title);
+                                    result.put("role", msg.get("role"));
+                                    result.put("timestamp", msg.get("timestamp"));
+                                    result.put("snippet", extractSnippet(content, lowerQuery));
+                                    result.put("messageIndex", i);
+
+                                    List<Map<String, String>> context = new ArrayList<>();
+                                    if (i > 0) {
+                                        var prev = messages.get(i - 1);
+                                        context.add(Map.of(
+                                                "role", String.valueOf(prev.get("role")),
+                                                "content", truncate(String.valueOf(prev.get("content")), 120)));
                                     }
+                                    if (i < messages.size() - 1) {
+                                        var next = messages.get(i + 1);
+                                        context.add(Map.of(
+                                                "role", String.valueOf(next.get("role")),
+                                                "content", truncate(String.valueOf(next.get("content")), 120)));
+                                    }
+                                    if (!context.isEmpty()) {
+                                        result.put("context", context);
+                                    }
+                                    results.add(result);
                                 }
                             }
                         } catch (IOException e) {
@@ -148,6 +192,29 @@ public class ConversationStore {
             log.error("Failed to search conversations", e);
         }
         return results;
+    }
+
+    public List<Map<String, Object>> searchGrouped(String query, int limit) {
+        List<Map<String, Object>> flat = search(query, limit * 3);
+        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (var result : flat) {
+            String sid = (String) result.get("sessionId");
+            grouped.computeIfAbsent(sid, k -> new ArrayList<>()).add(result);
+        }
+        List<Map<String, Object>> sessions = new ArrayList<>();
+        for (var entry : grouped.entrySet()) {
+            if (sessions.size() >= limit) break;
+            Map<String, Object> sessionResult = new LinkedHashMap<>();
+            sessionResult.put("sessionId", entry.getKey());
+            var matches = entry.getValue();
+            if (matches.get(0).containsKey("sessionTitle")) {
+                sessionResult.put("title", matches.get(0).get("sessionTitle"));
+            }
+            sessionResult.put("matchCount", matches.size());
+            sessionResult.put("matches", matches.stream().limit(3).toList());
+            sessions.add(sessionResult);
+        }
+        return sessions;
     }
 
     public String exportSession(String sessionId, String format) {
@@ -258,6 +325,28 @@ public class ConversationStore {
             log.error("Failed to find most recent session", e);
             return List.of();
         }
+    }
+
+    private String extractSnippet(String content, String lowerQuery) {
+        int idx = content.toLowerCase().indexOf(lowerQuery);
+        if (idx < 0) return truncate(content, 150);
+        int start = Math.max(0, idx - 60);
+        int end = Math.min(content.length(), idx + lowerQuery.length() + 60);
+        StringBuilder sb = new StringBuilder();
+        if (start > 0) sb.append("...");
+        String segment = content.substring(start, end);
+        int matchStart = idx - start;
+        int matchEnd = matchStart + lowerQuery.length();
+        sb.append(segment, 0, matchStart);
+        sb.append(">>>").append(segment, matchStart, matchEnd).append("<<<");
+        sb.append(segment, matchEnd, segment.length());
+        if (end < content.length()) sb.append("...");
+        return sb.toString();
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max - 3) + "...";
     }
 
     private String getSessionPreview(Path file) {

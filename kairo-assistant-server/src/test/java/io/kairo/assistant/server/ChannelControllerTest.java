@@ -6,7 +6,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -32,7 +32,7 @@ class ChannelControllerTest {
                 agent, toolRegistry, new TestFixtures.StubToolExecutor(),
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         controller = new ChannelController(session);
     }

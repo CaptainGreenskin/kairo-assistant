@@ -92,8 +92,9 @@ class ConversationStoreTest {
 
         var results = store.search("deploy");
         assertEquals(2, results.size());
-        assertTrue(results.stream().allMatch(r -> "message".equals(r.get("type"))));
         assertTrue(results.stream().allMatch(r -> r.containsKey("sessionId")));
+        assertTrue(results.stream().allMatch(r -> r.containsKey("snippet")));
+        assertTrue(results.stream().allMatch(r -> r.containsKey("role")));
     }
 
     @Test
@@ -324,5 +325,100 @@ class ConversationStoreTest {
                 .filter(e -> "session_end".equals(e.get("type")))
                 .count();
         assertEquals(1, endCount);
+    }
+
+    @Test
+    void searchReturnsSnippetWithHighlight() {
+        store.startSession();
+        store.appendMessage("user", "I need help with kubernetes deployment");
+
+        var results = store.search("kubernetes");
+        assertEquals(1, results.size());
+        String snippet = (String) results.get(0).get("snippet");
+        assertTrue(snippet.contains(">>>kubernetes<<<"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchReturnsContext() {
+        store.startSession();
+        store.appendMessage("user", "how to deploy?");
+        store.appendMessage("assistant", "use kubernetes apply command");
+        store.appendMessage("user", "thanks that worked");
+
+        var results = store.search("kubernetes");
+        assertEquals(1, results.size());
+        var result = results.get(0);
+        assertEquals("assistant", result.get("role"));
+        List<Map<String, String>> context = (List<Map<String, String>>) result.get("context");
+        assertNotNull(context);
+        assertEquals(2, context.size());
+        assertEquals("user", context.get(0).get("role"));
+        assertTrue(context.get(0).get("content").contains("deploy"));
+    }
+
+    @Test
+    void searchWithLimit() {
+        store.startSession();
+        for (int i = 0; i < 20; i++) {
+            store.appendMessage("user", "message about docker number " + i);
+        }
+
+        var results = store.search("docker", 5);
+        assertEquals(5, results.size());
+    }
+
+    @Test
+    void searchGroupedGroupsBySession() {
+        store.startSession();
+        store.appendMessage("user", "first kubernetes question");
+        store.appendMessage("assistant", "kubernetes answer");
+
+        var store2 = new ConversationStore(tempDir);
+        store2.startSession();
+        store2.appendMessage("user", "second kubernetes question");
+
+        var grouped = store.searchGrouped("kubernetes", 10);
+        assertEquals(2, grouped.size());
+        assertTrue(grouped.stream().allMatch(s -> s.containsKey("matchCount")));
+        assertTrue(grouped.stream().allMatch(s -> s.containsKey("matches")));
+    }
+
+    @Test
+    void searchGroupedLimitsSessionCount() {
+        for (int i = 0; i < 5; i++) {
+            var s = new ConversationStore(tempDir);
+            s.startSession();
+            s.appendMessage("user", "deploy question " + i);
+        }
+
+        var grouped = store.searchGrouped("deploy", 3);
+        assertTrue(grouped.size() <= 3);
+    }
+
+    @Test
+    void searchGroupedIncludesTitle() {
+        store.startSession();
+        String id = store.currentSessionId();
+        store.appendMessage("user", "kubernetes setup");
+        store.setTitle(id, "K8s Setup");
+
+        var grouped = store.searchGrouped("kubernetes", 5);
+        assertEquals(1, grouped.size());
+        assertEquals("K8s Setup", grouped.get(0).get("title"));
+    }
+
+    @Test
+    void snippetTruncatesLongContent() {
+        store.startSession();
+        String longContent = "prefix ".repeat(50) + "FINDME" + " suffix".repeat(50);
+        store.appendMessage("user", longContent);
+
+        var results = store.search("FINDME");
+        assertEquals(1, results.size());
+        String snippet = (String) results.get(0).get("snippet");
+        assertTrue(snippet.contains(">>>FINDME<<<"));
+        assertTrue(snippet.startsWith("..."));
+        assertTrue(snippet.endsWith("..."));
     }
 }

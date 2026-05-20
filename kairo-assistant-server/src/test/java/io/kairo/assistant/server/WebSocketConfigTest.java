@@ -10,19 +10,20 @@ class WebSocketConfigTest {
 
     @Test
     void configImplementsWebSocketConfigurer() {
-        var config = new WebSocketConfig(null);
+        var config = new WebSocketConfig(null, null);
         assertInstanceOf(WebSocketConfigurer.class, config);
     }
 
     @Test
     void configAcceptsNullHandler() {
-        assertDoesNotThrow(() -> new WebSocketConfig(null));
+        assertDoesNotThrow(() -> new WebSocketConfig(null, null));
     }
 
     @Test
     void registersHandlerAtApiWsPath() {
         var handler = createHandler();
-        var config = new WebSocketConfig(handler);
+        var mirrorHandler = new MirrorWebSocketHandler(new SessionMirror());
+        var config = new WebSocketConfig(handler, mirrorHandler);
         var registry = new ServletWebSocketHandlerRegistry();
         assertDoesNotThrow(() -> config.registerWebSocketHandlers(registry));
     }
@@ -30,7 +31,8 @@ class WebSocketConfigTest {
     @Test
     void multipleRegistrationsDoNotConflict() {
         var handler = createHandler();
-        var config = new WebSocketConfig(handler);
+        var mirrorHandler = new MirrorWebSocketHandler(new SessionMirror());
+        var config = new WebSocketConfig(handler, mirrorHandler);
         var registry1 = new ServletWebSocketHandlerRegistry();
         var registry2 = new ServletWebSocketHandlerRegistry();
         assertDoesNotThrow(() -> {
@@ -53,6 +55,7 @@ class WebSocketConfigTest {
 
     private AssistantWebSocketHandler createHandler() {
         var session = TestFixtures.defaultSession();
-        return new AssistantWebSocketHandler(session, new SessionManager(session), new MetricsCollector());
+        return new AssistantWebSocketHandler(session, TestFixtures.stubGateway(),
+                new SessionAwareDeltaRouter(), new SessionManager(session), new MetricsCollector(), new StreamingDeltaRouter());
     }
 }

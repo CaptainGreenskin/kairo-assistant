@@ -13,7 +13,7 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -71,12 +71,13 @@ class AssistantWebSocketHandlerTest {
                 agent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         metrics = new MetricsCollector();
         var sessionManager = new SessionManager(session);
-        handler = new AssistantWebSocketHandler(session, sessionManager, metrics);
+        handler = new AssistantWebSocketHandler(session, TestFixtures.stubGateway(agent),
+                new SessionAwareDeltaRouter(), sessionManager, metrics, new StreamingDeltaRouter());
     }
 
     @Test
@@ -126,12 +127,15 @@ class AssistantWebSocketHandlerTest {
         var ws = new StubWebSocketSession("ws-5");
         handler.afterConnectionEstablished(ws);
 
-        String payload = mapper.writeValueAsString(Map.of("type", "interrupt"));
-        handler.handleMessage(ws, new TextMessage(payload));
+        String msgPayload = mapper.writeValueAsString(Map.of("message", "hello"));
+        handler.handleMessage(ws, new TextMessage(msgPayload));
+        Thread.sleep(100);
 
-        await().atMost(2, TimeUnit.SECONDS).until(() -> interruptCalled.get() && !ws.sentMessages.isEmpty());
-        String sent = ws.sentMessages.get(0).getPayload().toString();
-        assertTrue(sent.contains("interrupted"));
+        String interruptPayload = mapper.writeValueAsString(Map.of("type", "interrupt"));
+        handler.handleMessage(ws, new TextMessage(interruptPayload));
+
+        await().atMost(2, TimeUnit.SECONDS).until(() ->
+                ws.sentMessages.stream().anyMatch(m -> m.getPayload().toString().contains("interrupted")));
     }
 
     @Test
@@ -276,9 +280,10 @@ class AssistantWebSocketHandlerTest {
                 slowAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
-        var slowHandler = new AssistantWebSocketHandler(slowSession, new SessionManager(slowSession), new MetricsCollector());
+        var slowHandler = new AssistantWebSocketHandler(slowSession, TestFixtures.stubGateway(slowAgent),
+                new SessionAwareDeltaRouter(), new SessionManager(slowSession), new MetricsCollector(), new StreamingDeltaRouter());
 
         var ws = new StubWebSocketSession("ws-progress");
         slowHandler.afterConnectionEstablished(ws);

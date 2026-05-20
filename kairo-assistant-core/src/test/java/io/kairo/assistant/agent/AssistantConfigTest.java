@@ -14,7 +14,7 @@ class AssistantConfigTest {
 
         assertThat(config.modelProvider()).isEqualTo("anthropic");
         assertThat(config.modelName()).isEqualTo("claude-sonnet-4-6");
-        assertThat(config.maxIterations()).isEqualTo(30);
+        assertThat(config.maxIterations()).isEqualTo(10);
         assertThat(config.timeout()).isEqualTo(Duration.ofMinutes(10));
         assertThat(config.tokenBudget()).isEqualTo(128_000);
         assertThat(config.apiKey()).isEqualTo("test-key");

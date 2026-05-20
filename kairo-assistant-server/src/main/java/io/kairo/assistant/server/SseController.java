@@ -3,7 +3,8 @@ package io.kairo.assistant.server;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.core.agent.DefaultReActAgent;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.MediaType;
@@ -21,10 +22,18 @@ import reactor.core.publisher.Sinks;
 public class SseController {
 
     private final AssistantSession session;
+    private final UnifiedGateway gateway;
+    private final SessionAwareDeltaRouter sessionDeltaRouter;
+    private final StreamingDeltaRouter deltaRouter;
     private final ConcurrentHashMap<String, Sinks.Many<String>> connections = new ConcurrentHashMap<>();
 
-    public SseController(AssistantSession session) {
+    public SseController(AssistantSession session, UnifiedGateway gateway,
+                         SessionAwareDeltaRouter sessionDeltaRouter,
+                         StreamingDeltaRouter deltaRouter) {
         this.session = session;
+        this.gateway = gateway;
+        this.sessionDeltaRouter = sessionDeltaRouter;
+        this.deltaRouter = deltaRouter;
     }
 
     @GetMapping(value = "/connect", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -55,29 +64,25 @@ public class SseController {
 
         sink.tryEmitNext(sseEvent("thinking", Map.of()));
 
-        if (session.agent() instanceof DefaultReActAgent agent) {
-            agent.setTextDeltaConsumer(delta -> {
-                String escaped = JsonEscape.escape(delta);
-                sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
-            });
-        }
+        SessionKey key = SessionKey.of("sse", clientId);
+        String subId = "sse-" + clientId + "-" + System.nanoTime();
+        sessionDeltaRouter.subscribe(key, subId, delta -> {
+            String escaped = JsonEscape.escape(delta);
+            sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
+        });
 
         Msg input = Msg.of(MsgRole.USER, message);
-        session.agent().call(input)
+        gateway.route(key, input)
                 .doOnSuccess(response -> {
+                    sessionDeltaRouter.unsubscribe(key, subId);
                     if (response != null) {
                         sink.tryEmitNext(sseEvent("response", Map.of("content", JsonEscape.escape(response.text()))));
                     }
                     sink.tryEmitNext(sseEvent("done", Map.of()));
-                    if (session.agent() instanceof DefaultReActAgent agent) {
-                        agent.setTextDeltaConsumer(null);
-                    }
                 })
                 .doOnError(e -> {
+                    sessionDeltaRouter.unsubscribe(key, subId);
                     sink.tryEmitNext(sseEvent("error", Map.of("message", JsonEscape.escape(e.getMessage()))));
-                    if (session.agent() instanceof DefaultReActAgent agent) {
-                        agent.setTextDeltaConsumer(null);
-                    }
                 })
                 .subscribe();
 
@@ -104,7 +109,7 @@ public class SseController {
 
     @PostMapping("/interrupt")
     public Map<String, String> interrupt(@RequestParam(defaultValue = "default") String clientId) {
-        session.agent().interrupt();
+        gateway.interrupt(SessionKey.of("sse", clientId));
         Sinks.Many<String> sink = connections.get(clientId);
         if (sink != null) {
             sink.tryEmitNext(sseEvent("interrupted", Map.of()));

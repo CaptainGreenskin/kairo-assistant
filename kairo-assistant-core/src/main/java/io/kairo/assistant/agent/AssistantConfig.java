@@ -12,6 +12,9 @@ public record AssistantConfig(
         Duration timeout,
         int tokenBudget,
         String dataDir,
+        int sessionPoolSize,
+        Duration sessionIdleTtl,
+        float compactionTrigger,
         Map<String, String> env) {
 
     public static Builder builder() {
@@ -23,10 +26,13 @@ public record AssistantConfig(
         private String modelName = "claude-sonnet-4-6";
         private String apiKey;
         private String apiBaseUrl;
-        private int maxIterations = 30;
+        private int maxIterations = 10;
         private Duration timeout = Duration.ofMinutes(10);
         private int tokenBudget = 128_000;
         private String dataDir = System.getProperty("user.home") + "/.kairo-assistant";
+        private int sessionPoolSize = 64;
+        private Duration sessionIdleTtl = Duration.ofMinutes(60);
+        private float compactionTrigger = 0.50f;
         private Map<String, String> env = Map.of();
 
         public Builder modelProvider(String v) {
@@ -69,6 +75,21 @@ public record AssistantConfig(
             return this;
         }
 
+        public Builder sessionPoolSize(int v) {
+            this.sessionPoolSize = v;
+            return this;
+        }
+
+        public Builder sessionIdleTtl(Duration v) {
+            this.sessionIdleTtl = v;
+            return this;
+        }
+
+        public Builder compactionTrigger(float v) {
+            this.compactionTrigger = v;
+            return this;
+        }
+
         public Builder env(Map<String, String> v) {
             this.env = v;
             return this;
@@ -90,10 +111,17 @@ public record AssistantConfig(
                     timeout,
                     tokenBudget,
                     dataDir,
+                    sessionPoolSize,
+                    sessionIdleTtl,
+                    compactionTrigger,
                     env);
         }
 
         private String resolveApiKey(String provider) {
+            String universal = System.getenv("KAIRO_API_KEY");
+            if (universal != null && !universal.isBlank()) {
+                return universal;
+            }
             return switch (provider) {
                 case "anthropic" -> System.getenv("ANTHROPIC_API_KEY");
                 case "openai" -> System.getenv("OPENAI_API_KEY");
@@ -105,6 +133,10 @@ public record AssistantConfig(
         }
 
         private String resolveBaseUrl(String provider) {
+            String envUrl = System.getenv("KAIRO_BASE_URL");
+            if (envUrl != null && !envUrl.isBlank()) {
+                return envUrl;
+            }
             return switch (provider) {
                 case "glm" -> "https://open.bigmodel.cn/api/paas/v4";
                 case "minimax" -> "https://api.minimax.chat/v1";

@@ -846,6 +846,8 @@
             <button onclick="toggleSidebar('config')" aria-label="Open configuration">Config</button>
             <button onclick="toggleSidebar('system')" aria-label="Open system info">System</button>
             <button onclick="toggleSidebar('health')" aria-label="Open health check">Health</button>
+            <button onclick="toggleSidebar('dashboard')" aria-label="Open dashboard">Dashboard</button>
+            <button onclick="toggleSidebar('mirror')" aria-label="Open session mirror">Mirror</button>
             <button onclick="toggleSidebar('history')" aria-label="Open session history">History</button>
             <button onclick="clearChat()" aria-label="Clear chat messages">Clear</button>
             <button onclick="toggleSettings()" aria-label="Open settings">Settings</button>
@@ -1114,11 +1116,15 @@
                     if (!streamingEl) {
                         streamingEl = document.createElement('div');
                         streamingEl.className = 'message assistant streaming';
+                        streamingEl.dataset.rawBuffer = '';
                         messagesEl.appendChild(streamingEl);
                         streamCharCount = 0;
                         streamFirstDeltaTime = Date.now();
                     }
-                    streamingEl.textContent += data.content;
+                    streamingEl.dataset.rawBuffer = (streamingEl.dataset.rawBuffer || '') + data.content;
+                    // Strip <think>...</think> for display; keep raw buffer for final render
+                    const displayText = streamingEl.dataset.rawBuffer.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*/g, '');
+                    streamingEl.textContent = displayText;
                     streamCharCount += (data.content || '').length;
                     scrollToBottom();
                 } else if (data.type === 'response') {
@@ -1126,7 +1132,7 @@
                     removeThinking();
                     let targetEl = null;
                     if (streamingEl) {
-                        const rawText = streamingEl.textContent;
+                        const rawText = streamingEl.dataset.rawBuffer || streamingEl.textContent;
                         streamingEl.innerHTML = renderMarkdown(rawText);
                         streamingEl.classList.remove('streaming');
                         targetEl = streamingEl;
@@ -1596,6 +1602,9 @@
 
         function renderMarkdown(text) {
             if (!text) return '';
+            // Strip model thinking tags (e.g. MiniMax M2.7 <think>...</think>)
+            text = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+            if (!text.trim()) return '';
             let html = escapeHtml(text);
 
             // Code blocks
@@ -1944,6 +1953,12 @@
             } else if (type === 'health') {
                 content.innerHTML = '<div style="color:var(--text-dim);font-size:12px;">Loading...</div>';
                 loadHealthPanel(content);
+            } else if (type === 'dashboard') {
+                content.innerHTML = '<div style="color:var(--text-dim);font-size:12px;">Loading...</div>';
+                loadDashboardPanel(content);
+            } else if (type === 'mirror') {
+                content.innerHTML = '<div style="color:var(--text-dim);font-size:12px;">Loading...</div>';
+                loadMirrorPanel(content);
             } else if (type === 'history') {
                 content.innerHTML = '<div style="color: var(--text-dim); font-size: 12px; margin-bottom: 8px;">Loading...</div>';
                 loadSessionHistory(content);
@@ -2626,6 +2641,146 @@
             }
         }
 
+        async function loadDashboardPanel(container) {
+            try {
+                const [overviewResp, goalsResp] = await Promise.all([
+                    fetch('/api/dashboard/overview'),
+                    fetch('/api/dashboard/goals')
+                ]);
+                const overview = await overviewResp.json();
+                const goals = await goalsResp.json();
+                container.innerHTML = '';
+
+                const statsDiv = document.createElement('div');
+                statsDiv.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;';
+                const stats = [
+                    { label: 'Active Sessions', value: overview.activeSessions },
+                    { label: 'Total Goals', value: overview.totalGoals },
+                    { label: 'Active Goals', value: overview.activeGoals },
+                    { label: 'Paired Users', value: overview.pairedUsers },
+                    { label: 'Mirror Listeners', value: overview.mirrorListeners },
+                    { label: 'Draining', value: overview.isDraining ? 'Yes' : 'No' }
+                ];
+                stats.forEach(s => {
+                    statsDiv.innerHTML += `<div style="background:var(--primary);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:20px;font-weight:700;color:var(--accent);">${s.value}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${s.label}</div></div>`;
+                });
+                container.appendChild(statsDiv);
+
+                const platDiv = document.createElement('div');
+                platDiv.style.cssText = 'margin-bottom:12px;';
+                platDiv.innerHTML = `<div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">Platforms: ${(overview.registeredPlatforms || []).join(', ') || 'none'}</div>`;
+                container.appendChild(platDiv);
+
+                if (goals.length > 0) {
+                    const goalsTitle = document.createElement('h3');
+                    goalsTitle.style.cssText = 'font-size:13px;margin:12px 0 8px;color:var(--text);';
+                    goalsTitle.textContent = `Goals (${goals.length})`;
+                    container.appendChild(goalsTitle);
+
+                    goals.forEach(g => {
+                        const gDiv = document.createElement('div');
+                        gDiv.className = 'item';
+                        const statusColor = g.status === 'ACTIVE' ? 'var(--success)' : g.status === 'PAUSED' ? 'var(--warn)' : 'var(--text-dim)';
+                        gDiv.innerHTML = `
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div style="flex:1;min-width:0;">
+                                    <div class="name" style="font-size:12px;">${g.description || g.id}</div>
+                                    <div class="desc">${g.cron || ''} <span style="color:${statusColor};font-weight:600;">${g.status}</span></div>
+                                </div>
+                                <div style="display:flex;gap:4px;">
+                                    ${g.status === 'ACTIVE' ? `<button onclick="dashGoalAction('${g.id}','pause',this)" class="msg-action-btn" style="font-size:10px;padding:2px 6px;">Pause</button>` : ''}
+                                    ${g.status === 'PAUSED' ? `<button onclick="dashGoalAction('${g.id}','resume',this)" class="msg-action-btn" style="font-size:10px;padding:2px 6px;">Resume</button>` : ''}
+                                    <button onclick="dashGoalAction('${g.id}','delete',this)" class="msg-action-btn" style="font-size:10px;padding:2px 6px;color:#ef5350;">Del</button>
+                                </div>
+                            </div>`;
+                        container.appendChild(gDiv);
+                    });
+                } else {
+                    container.innerHTML += '<div style="color:var(--text-dim);font-size:12px;padding:8px;">No goals configured</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div style="color:#ef5350;font-size:13px;padding:8px;">Failed to load dashboard: ' + e.message + '</div>';
+            }
+        }
+
+        async function dashGoalAction(goalId, action, btn) {
+            try {
+                const method = action === 'delete' ? 'DELETE' : 'POST';
+                const url = action === 'delete' ? `/api/dashboard/goals/${goalId}` : `/api/dashboard/goals/${goalId}/${action}`;
+                const resp = await fetch(url, { method });
+                if (resp.ok) {
+                    addNotification('success', `Goal ${action}d`);
+                    loadDashboardPanel(document.getElementById('sidebar-content'));
+                } else {
+                    addNotification('error', 'Action failed');
+                }
+            } catch (e) {
+                addNotification('error', 'Action failed: ' + e.message);
+            }
+        }
+
+        function loadMirrorPanel(container) {
+            container.innerHTML = '';
+            const statusDiv = document.createElement('div');
+            statusDiv.id = 'mirror-status';
+            statusDiv.style.cssText = 'font-size:12px;color:var(--text-dim);margin-bottom:12px;';
+            statusDiv.textContent = 'Connecting...';
+            container.appendChild(statusDiv);
+
+            const filterDiv = document.createElement('div');
+            filterDiv.style.cssText = 'margin-bottom:8px;';
+            filterDiv.innerHTML = `<input id="mirror-filter" type="text" placeholder="Filter by user/platform..." style="width:100%;background:var(--primary);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:12px;outline:none;">`;
+            container.appendChild(filterDiv);
+
+            const messagesDiv = document.createElement('div');
+            messagesDiv.id = 'mirror-messages';
+            messagesDiv.style.cssText = 'max-height:calc(100vh - 200px);overflow-y:auto;';
+            container.appendChild(messagesDiv);
+
+            if (window._mirrorWs) {
+                window._mirrorWs.close();
+            }
+
+            const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProto}//${location.host}/api/mirror`);
+            window._mirrorWs = ws;
+
+            ws.onopen = () => {
+                statusDiv.innerHTML = '<span style="color:var(--success);">Connected</span>';
+                ws.send(JSON.stringify({ action: 'subscribe_all' }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    const filter = (document.getElementById('mirror-filter') || {}).value || '';
+                    if (filter && !JSON.stringify(msg).toLowerCase().includes(filter.toLowerCase())) return;
+
+                    const dirColor = msg.direction === 'inbound' ? '#4fc3f7' : '#81c784';
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding:8px;border-bottom:1px solid var(--border);font-size:12px;';
+                    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+                    div.innerHTML = `
+                        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                            <span style="color:${dirColor};font-weight:600;">${msg.direction}</span>
+                            <span style="color:var(--text-dim);font-size:10px;">${time}</span>
+                        </div>
+                        <div style="color:var(--text-dim);font-size:10px;margin-bottom:2px;">${msg.sourcePlatform || ''} | ${msg.sessionUser || ''}</div>
+                        <div style="color:var(--text);word-break:break-all;">${(msg.content || '').substring(0, 300)}${(msg.content || '').length > 300 ? '...' : ''}</div>`;
+                    messagesDiv.insertBefore(div, messagesDiv.firstChild);
+                    while (messagesDiv.children.length > 100) messagesDiv.removeChild(messagesDiv.lastChild);
+                } catch (e) {}
+            };
+
+            ws.onclose = () => {
+                statusDiv.innerHTML = '<span style="color:#ef5350;">Disconnected</span>';
+            };
+
+            ws.onerror = () => {
+                statusDiv.innerHTML = '<span style="color:#ef5350;">Connection error</span>';
+            };
+        }
+
         async function exportServerSession(sessionId) {
             try {
                 const resp = await fetch(`/api/sessions/${sessionId}/export?format=markdown`);
@@ -3275,12 +3430,12 @@
         }
 
         // Page visibility & notification badge
-        let unreadCount = 0;
+        let titleUnreadCount = 0;
         const originalTitle = document.title;
 
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                unreadCount = 0;
+                titleUnreadCount = 0;
                 document.title = originalTitle;
             }
         });
@@ -3288,8 +3443,8 @@
         function notifyNewMessage(responseText) {
             playNotifSound();
             if (document.hidden) {
-                unreadCount++;
-                document.title = `(${unreadCount}) ${originalTitle}`;
+                titleUnreadCount++;
+                document.title = `(${titleUnreadCount}) ${originalTitle}`;
                 if (appSettings.desktopNotif && Notification.permission === 'granted') {
                     const preview = responseText
                         ? responseText.substring(0, 120).replace(/\n/g, ' ')

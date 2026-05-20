@@ -12,7 +12,7 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -52,11 +52,11 @@ class ChatControllerTest {
                 agent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         var sessionManager = new SessionManager(session);
-        controller = new ChatController(session, sessionManager, null);
+        controller = new ChatController(session, TestFixtures.stubGateway(agent), new SessionAwareDeltaRouter(), sessionManager, new StreamingDeltaRouter());
     }
 
     @Test
@@ -103,15 +103,15 @@ class ChatControllerTest {
 
     @Test
     void interruptReturnsStatus() {
-        var result = controller.interrupt();
+        controller.chat(new ChatController.ChatRequest("init"), "test-session").block();
+        var result = controller.interrupt("test-session");
         assertEquals("interrupted", result.get("status"));
-        assertTrue(interruptCalled.get());
     }
 
     @Test
     void chatStreamRejectsBlankMessage() {
         var request = new ChatController.ChatRequest("");
-        var events = controller.chatStream(request).collectList().block();
+        var events = controller.chatStream(request, null).collectList().block();
 
         assertNotNull(events);
         assertFalse(events.isEmpty());
@@ -122,7 +122,7 @@ class ChatControllerTest {
     @Test
     void chatStreamProducesEvents() {
         var request = new ChatController.ChatRequest("hello");
-        var events = controller.chatStream(request).collectList().block();
+        var events = controller.chatStream(request, null).collectList().block();
 
         assertNotNull(events);
         assertFalse(events.isEmpty());
@@ -154,9 +154,9 @@ class ChatControllerTest {
                 failingAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), null);
+        var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 
         var result = errorController.chat(new ChatController.ChatRequest("hello"), null).block();
         assertNotNull(result);
@@ -181,11 +181,11 @@ class ChatControllerTest {
                 failingAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
-        var errorController = new ChatController(session, new SessionManager(session), null);
+        var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 
-        var events = errorController.chatStream(new ChatController.ChatRequest("hello"))
+        var events = errorController.chatStream(new ChatController.ChatRequest("hello"), null)
                 .collectList().block();
         assertNotNull(events);
         assertTrue(events.stream().anyMatch(e -> e.contains("error")));

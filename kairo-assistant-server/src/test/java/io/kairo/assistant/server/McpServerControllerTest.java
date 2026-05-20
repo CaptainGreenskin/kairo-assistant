@@ -10,7 +10,7 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -44,7 +44,7 @@ class McpServerControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry, new McpToolExecutor(),
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         controller = new McpServerController(session);

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
 import io.kairo.assistant.tool.ToolCallLogger;
 import io.kairo.core.agent.DefaultReActAgent;
 import jakarta.annotation.PreDestroy;
@@ -39,6 +41,8 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
     private static final int MAX_MESSAGE_SIZE = 102_400;
 
     private final AssistantSession session;
+    private final UnifiedGateway gateway;
+    private final SessionAwareDeltaRouter sessionDeltaRouter;
     private final SessionManager sessionManager;
     private final MetricsCollector metrics;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -50,11 +54,16 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         return t;
     });
 
-    public AssistantWebSocketHandler(AssistantSession session, SessionManager sessionManager, MetricsCollector metrics) {
+    public AssistantWebSocketHandler(AssistantSession session, UnifiedGateway gateway,
+                                     SessionAwareDeltaRouter sessionDeltaRouter,
+                                     SessionManager sessionManager,
+                                     MetricsCollector metrics, StreamingDeltaRouter deltaRouter) {
         this.session = session;
+        this.gateway = gateway;
+        this.sessionDeltaRouter = sessionDeltaRouter;
         this.sessionManager = sessionManager;
         this.metrics = metrics;
-        wireStreaming();
+        wireStreaming(deltaRouter);
         wireToolEvents();
         startPingSchedule();
     }
@@ -73,9 +82,10 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         }
     };
 
-    private void wireStreaming() {
+    private void wireStreaming(StreamingDeltaRouter deltaRouter) {
+        deltaRouter.subscribe("websocket", wsBroadcastConsumer);
         if (session.agent() instanceof DefaultReActAgent agent) {
-            agent.setTextDeltaConsumer(wsBroadcastConsumer);
+            agent.setTextDeltaConsumer(deltaRouter.compositeConsumer());
         }
     }
 
@@ -130,6 +140,14 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         activeSessions.put(wsSession.getId(), wsSession);
         lastPongTimes.put(wsSession.getId(), System.currentTimeMillis());
         sessionManager.getOrCreate(wsSession.getId());
+
+        SessionKey key = SessionKey.of("websocket", wsSession.getId());
+        sessionDeltaRouter.subscribe(key, "ws-" + wsSession.getId(), delta -> {
+            if (wsSession.isOpen()) {
+                sendJson(wsSession, Map.of("type", "delta", "content", delta));
+            }
+        });
+
         metrics.wsConnected();
         log.info("WebSocket connected: {}", wsSession.getId());
         sendConversationHistory(wsSession);
@@ -167,7 +185,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
             String type = String.valueOf(payload.getOrDefault("type", "message"));
 
             if ("interrupt".equals(type)) {
-                session.agent().interrupt();
+                gateway.interrupt(SessionKey.of("websocket", wsSession.getId()));
                 sendJson(wsSession, Map.of("type", "interrupted"));
                 return;
             }
@@ -197,8 +215,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
                         clientSession.conversationStore().currentSessionId(), title);
             }
 
-            long tokensBefore = session.agent() instanceof DefaultReActAgent ra
-                    ? ra.totalTokensUsed() : 0;
+            SessionKey wsKey = SessionKey.of("websocket", wsSession.getId());
             Msg input = Msg.of(MsgRole.USER, text);
             long callStart = System.currentTimeMillis();
 
@@ -209,25 +226,18 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
                 }
             }, PROGRESS_INTERVAL_SECONDS, PROGRESS_INTERVAL_SECONDS, TimeUnit.SECONDS);
 
-            session.agent().call(input)
+            gateway.route(wsKey, input)
                     .subscribe(
                             response -> {
                                 progressFuture.cancel(false);
                                 broadcast(Map.of("type", "agent_state", "state", "IDLE"));
                                 metrics.recordAgentCall(System.currentTimeMillis() - callStart);
-                                if (session.agent() instanceof DefaultReActAgent ra2) {
-                                    long delta = ra2.totalTokensUsed() - tokensBefore;
-                                    if (delta > 0) metrics.recordTokenUsage(0, delta);
-                                }
                                 clientSession.conversationStore().appendMessage("assistant", response.text());
                                 var responseData = new HashMap<String, Object>();
                                 responseData.put("type", "response");
                                 responseData.put("content", response.text());
                                 responseData.put("role", response.role().name());
                                 responseData.put("durationMs", System.currentTimeMillis() - callStart);
-                                if (session.agent() instanceof DefaultReActAgent ra3) {
-                                    responseData.put("totalTokens", ra3.totalTokensUsed());
-                                }
                                 sendJson(wsSession, responseData);
                             },
                             error -> {
@@ -253,6 +263,10 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
         activeSessions.remove(wsSession.getId());
         lastPongTimes.remove(wsSession.getId());
+
+        SessionKey key = SessionKey.of("websocket", wsSession.getId());
+        sessionDeltaRouter.unsubscribe(key, "ws-" + wsSession.getId());
+
         var clientSession = sessionManager.get(wsSession.getId());
         if (clientSession != null && clientSession.messageCount() > 0) {
             try {
@@ -273,6 +287,19 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         for (WebSocketSession ws : activeSessions.values()) {
             if (ws.isOpen()) {
                 sendJson(ws, event);
+            }
+        }
+    }
+
+    public void broadcastShutdown() {
+        broadcast(Map.of("type", "shutdown", "message", "Server is shutting down"));
+        for (WebSocketSession ws : activeSessions.values()) {
+            try {
+                if (ws.isOpen()) {
+                    ws.close(org.springframework.web.socket.CloseStatus.SERVICE_RESTARTED);
+                }
+            } catch (Exception e) {
+                log.debug("Failed to close WebSocket {}: {}", ws.getId(), e.getMessage());
             }
         }
     }

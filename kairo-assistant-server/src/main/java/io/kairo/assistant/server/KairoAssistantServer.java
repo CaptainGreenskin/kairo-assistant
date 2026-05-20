@@ -6,8 +6,21 @@ import io.kairo.assistant.agent.AssistantAgentFactory;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.agent.ConversationStore;
+import io.kairo.assistant.gateway.AgentSessionPool;
+import io.kairo.assistant.gateway.ModelRegistry;
+import io.kairo.assistant.gateway.ModelSwitchService;
+import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.assistant.goal.Goal;
+import io.kairo.assistant.goal.GoalScheduler;
+import io.kairo.assistant.goal.GoalStore;
+import io.kairo.assistant.security.OutputScanner;
+import io.kairo.assistant.security.UserPairing;
+import io.kairo.assistant.tool.GoalTool;
 import io.kairo.core.agent.DefaultReActAgent;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -22,24 +35,106 @@ public class KairoAssistantServer {
     private static final Logger log = LoggerFactory.getLogger(KairoAssistantServer.class);
 
     @Bean
-    public AssistantSession assistantSession() {
-        AssistantConfig config = AssistantConfig.builder()
+    public AssistantConfig assistantConfig() {
+        return AssistantConfig.builder()
                 .modelProvider(env("KAIRO_PROVIDER", "anthropic"))
                 .modelName(env("KAIRO_MODEL", "claude-sonnet-4-6"))
+                .sessionPoolSize(safeParseInt(
+                        System.getenv().getOrDefault("KAIRO_SESSION_POOL_SIZE", "64"), 64))
+                .sessionIdleTtl(Duration.ofMinutes(safeParseInt(
+                        System.getenv().getOrDefault("KAIRO_SESSION_IDLE_TTL_MINUTES", "60"), 60)))
+                .compactionTrigger(safeParseFloat(
+                        System.getenv().getOrDefault("KAIRO_COMPACTION_TRIGGER", "0.50"), 0.50f))
                 .build();
+    }
 
+    @Bean
+    public AssistantSession assistantSession(AssistantConfig config) {
         AssistantSession session = AssistantAgentFactory.create(config);
         session.start();
-
         restoreConversationHistory(session);
-
         return session;
+    }
+
+    @Bean
+    public UnifiedGateway unifiedGateway(AssistantConfig config,
+                                         SessionAwareDeltaRouter deltaRouter) {
+        AgentSessionPool pool = new AgentSessionPool(
+                config.sessionPoolSize(),
+                config.sessionIdleTtl(),
+                key -> AssistantAgentFactory.create(config).agent(),
+                evictedKey -> deltaRouter.removeSession(evictedKey));
+        int maxConcurrent = safeParseInt(
+                System.getenv().getOrDefault("KAIRO_MAX_CONCURRENT_RUNS", "16"), 16);
+        return new UnifiedGateway(pool, maxConcurrent);
+    }
+
+    @Bean
+    public ModelRegistry modelRegistry() {
+        return new ModelRegistry();
+    }
+
+    @Bean
+    public ModelSwitchService modelSwitchService(UnifiedGateway gateway,
+                                                  ModelRegistry registry,
+                                                  AssistantConfig config) {
+        return new ModelSwitchService(gateway, registry, config);
     }
 
     @Bean
     public ConversationStore conversationStore(AssistantSession session) {
         Path dataDir = Path.of(session.config().dataDir());
         return new ConversationStore(dataDir.resolve("conversations"));
+    }
+
+    @Bean
+    public OutboundMessageRouter outboundMessageRouter() {
+        return new OutboundMessageRouter();
+    }
+
+    @Bean
+    public GoalStore goalStore(AssistantSession session) {
+        Path dataDir = Path.of(session.config().dataDir()).resolve("goals");
+        GoalStore store = new GoalStore(dataDir);
+        GoalTool.setStore(store);
+        return store;
+    }
+
+    @Bean(initMethod = "start", destroyMethod = "stop")
+    public GoalScheduler goalScheduler(GoalStore store, UnifiedGateway gateway,
+                                       OutboundMessageRouter outboundRouter) {
+        ZoneId zone = ZoneId.of(env("KAIRO_TIMEZONE", "Asia/Shanghai"));
+        return new GoalScheduler(store, (goal, prompt) -> {
+            try {
+                SessionKey key = SessionKey.of("goal", goal.id());
+                Msg input = Msg.of(MsgRole.USER, prompt);
+                Msg result = gateway.route(key, input).block(Duration.ofMinutes(5));
+                if (result != null && goal.channel() != null && !goal.channel().isBlank()) {
+                    String dest = goal.target() != null && !goal.target().isBlank()
+                            ? goal.target() : "default";
+                    outboundRouter.send(goal.channel(), dest,
+                            "[Goal: " + goal.description() + "]\n" + result.text());
+                }
+                log.info("Goal [{}] executed successfully", goal.id());
+            } catch (Exception e) {
+                log.error("Goal [{}] execution failed: {}", goal.id(), e.getMessage());
+            }
+        }, zone);
+    }
+
+    @Bean
+    public UserPairing userPairing(AssistantSession session) {
+        Path dataDir = Path.of(session.config().dataDir());
+        boolean enabled = Boolean.parseBoolean(
+                System.getenv().getOrDefault("KAIRO_PAIRING_ENABLED", "false"));
+        return new UserPairing(dataDir, enabled);
+    }
+
+    @Bean
+    public OutputScanner outputScanner() {
+        boolean enabled = Boolean.parseBoolean(
+                System.getenv().getOrDefault("KAIRO_SECURITY_SCAN", "true"));
+        return new OutputScanner(enabled);
     }
 
     @Bean
@@ -55,7 +150,17 @@ public class KairoAssistantServer {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
             LoggerFactory.getLogger(KairoAssistantServer.class)
-                    .warn("Invalid integer '{}' for KAIRO_MAX_RESTORE_MESSAGES, using default {}", value, defaultValue);
+                    .warn("Invalid integer '{}', using default {}", value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static float safeParseFloat(String value, float defaultValue) {
+        try {
+            return Float.parseFloat(value);
+        } catch (NumberFormatException e) {
+            LoggerFactory.getLogger(KairoAssistantServer.class)
+                    .warn("Invalid float '{}', using default {}", value, defaultValue);
             return defaultValue;
         }
     }

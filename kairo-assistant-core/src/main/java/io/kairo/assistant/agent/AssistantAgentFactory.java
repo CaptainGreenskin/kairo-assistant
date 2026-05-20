@@ -2,12 +2,27 @@ package io.kairo.assistant.agent;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.ToolRegistry;
-import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
+import io.kairo.plugin.ComponentRegistrar;
+import io.kairo.plugin.DefaultPluginManager;
+import io.kairo.plugin.DefaultPluginRegistry;
+import io.kairo.plugin.KairoComponentRegistrar;
+import io.kairo.plugin.PluginEnvironment;
+import io.kairo.plugin.PluginLoader;
+import io.kairo.plugin.installer.PluginCacheManager;
+import io.kairo.plugin.source.GitHubSourceFetcher;
+import io.kairo.plugin.source.GitSubdirSourceFetcher;
+import io.kairo.plugin.source.GitUrlSourceFetcher;
+import io.kairo.plugin.source.HttpDownloader;
+import io.kairo.plugin.source.LocalPathSourceFetcher;
+import io.kairo.plugin.source.NpmSourceFetcher;
+import io.kairo.plugin.source.SourceFetcherRegistry;
 import io.kairo.core.agent.AgentBuilder;
+import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.cron.CronFireCallback;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.cron.CronTaskStore;
@@ -84,6 +99,10 @@ public final class AssistantAgentFactory {
 
         DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
         toolRegistry.scan("io.kairo.assistant.tool");
+        if (toolRegistry.getAll().isEmpty()) {
+            log.info("Classpath scan found 0 tools, falling back to explicit registration");
+            registerAllTools(toolRegistry);
+        }
 
         DefaultToolExecutor toolExecutor =
                 new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
@@ -92,13 +111,145 @@ public final class AssistantAgentFactory {
 
         SkillRegistry skillRegistry = AssistantSkills.createRegistry();
 
-        PluginManager pluginManager = new PluginManager(toolRegistry, skillRegistry, dataPath);
+        PluginManager pluginManager = buildPluginManager(skillRegistry, dataPath);
+
+        ConversationStore conversationStore = new ConversationStore(
+                dataPath.resolve("conversations"));
 
         Map<String, Object> toolDeps = new HashMap<>();
         toolDeps.put("memoryStore", memoryStore);
+        toolDeps.put("conversationStore", conversationStore);
         toolDeps.put("modelProvider", modelProvider);
         toolDeps.put("modelName", config.modelName());
 
+        String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
+
+        Agent agent = buildAgent(config, modelProvider, config.modelName(),
+                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+
+        return new AssistantSession(
+                agent, toolRegistry, toolExecutor, memoryStore, cronScheduler,
+                skillRegistry, pluginManager, config);
+    }
+
+    public static Agent createAgentWithModel(AssistantConfig baseConfig,
+                                             String providerName,
+                                             String modelName) {
+        AssistantConfig modelConfig = AssistantConfig.builder()
+                .modelProvider(providerName)
+                .modelName(modelName)
+                .apiKey(null)
+                .dataDir(baseConfig.dataDir())
+                .maxIterations(baseConfig.maxIterations())
+                .timeout(baseConfig.timeout())
+                .tokenBudget(baseConfig.tokenBudget())
+                .compactionTrigger(baseConfig.compactionTrigger())
+                .build();
+
+        Path dataPath = Path.of(baseConfig.dataDir());
+        MemoryStore memoryStore = new FileMemoryStore(dataPath.resolve("memory"));
+
+        DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
+        toolRegistry.scan("io.kairo.assistant.tool");
+        if (toolRegistry.getAll().isEmpty()) {
+            registerAllTools(toolRegistry);
+        }
+
+        DefaultToolExecutor toolExecutor =
+                new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
+
+        io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(modelConfig);
+
+        ConversationStore conversationStore = new ConversationStore(
+                dataPath.resolve("conversations"));
+
+        Map<String, Object> toolDeps = new HashMap<>();
+        toolDeps.put("memoryStore", memoryStore);
+        toolDeps.put("conversationStore", conversationStore);
+        toolDeps.put("modelProvider", modelProvider);
+        toolDeps.put("modelName", modelName);
+
+        SkillRegistry skillRegistry = AssistantSkills.createRegistry();
+        String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
+
+        return buildAgent(modelConfig, modelProvider, modelName,
+                toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+    }
+
+    /**
+     * Builds a {@link DefaultPluginManager} configured with all five remote source fetchers and a
+     * {@link KairoComponentRegistrar} that wires plugin contributions into this assistant's
+     * skill / MCP / bin chains.
+     *
+     * <p>Plugins live under {@code <dataDir>/plugins/} — cache at {@code cache/}, persistent
+     * per-plugin data at {@code data/}. The MCP bridge is left null in the registrar for now
+     * (kairo-assistant doesn't expose an MCP runtime yet at this layer); plugin-declared MCP
+     * servers will become active once the assistant ships its own MCP plugin.
+     */
+    private static PluginManager buildPluginManager(SkillRegistry skillRegistry, Path dataPath) {
+        Path pluginRoot = dataPath.resolve("plugins");
+        Path cacheRoot = pluginRoot.resolve("cache");
+        Path dataRoot = pluginRoot.resolve("data");
+        try {
+            Files.createDirectories(cacheRoot);
+            Files.createDirectories(dataRoot);
+        } catch (IOException e) {
+            log.warn("Failed to create plugin directories under {}: {}", pluginRoot, e.getMessage());
+        }
+
+        PluginCacheManager cache = new PluginCacheManager(cacheRoot);
+        HttpDownloader http = HttpDownloader.jdk();
+        SourceFetcherRegistry fetchers =
+                new SourceFetcherRegistry()
+                        .register(new LocalPathSourceFetcher())
+                        .register(new GitHubSourceFetcher(cache, http))
+                        .register(new GitUrlSourceFetcher(cache))
+                        .register(new GitSubdirSourceFetcher(cache))
+                        .register(new NpmSourceFetcher(cache, http));
+
+        ComponentRegistrar registrar =
+                new KairoComponentRegistrar(skillRegistry, null, new PluginEnvironment());
+
+        return new DefaultPluginManager(
+                new DefaultPluginRegistry(), new PluginLoader(), dataRoot, registrar, fetchers);
+    }
+
+    private static Agent buildAgent(AssistantConfig config,
+                                    io.kairo.api.model.ModelProvider modelProvider,
+                                    String modelName,
+                                    ToolRegistry toolRegistry,
+                                    DefaultToolExecutor toolExecutor,
+                                    Map<String, Object> toolDeps,
+                                    String systemPrompt,
+                                    MemoryStore memoryStore) {
+        float trigger = config.compactionTrigger();
+        CompactionThresholds compaction = CompactionThresholds.builder()
+                .triggerPressure(trigger)
+                .snipPressure(trigger)
+                .microPressure(trigger + 0.10f)
+                .collapsePressure(trigger + 0.20f)
+                .autoPressure(trigger + 0.30f)
+                .partialPressure(trigger + 0.40f)
+                .build();
+
+        return AgentBuilder.create()
+                .name("kairo-assistant")
+                .model(modelProvider)
+                .modelName(modelName)
+                .tools(toolRegistry)
+                .toolExecutor(toolExecutor)
+                .toolDependencies(toolDeps)
+                .systemPrompt(systemPrompt)
+                .maxIterations(config.maxIterations())
+                .timeout(config.timeout())
+                .tokenBudget(config.tokenBudget())
+                .memoryStore(memoryStore)
+                .compactionThresholds(compaction)
+                .streaming(true)
+                .build();
+    }
+
+    private static String buildSystemPrompt(SkillRegistry skillRegistry, Path dataPath) {
         String skillListing = skillRegistry.list().stream()
                 .map(s -> "- **/" + s.name() + "**: " + s.description())
                 .collect(Collectors.joining("\n"));
@@ -108,27 +259,7 @@ public final class AssistantAgentFactory {
         if (customInstructions != null && !customInstructions.isBlank()) {
             systemPrompt += "\n# Custom Instructions\n" + customInstructions + "\n";
         }
-
-        Agent agent =
-                AgentBuilder.create()
-                        .name("kairo-assistant")
-                        .model(modelProvider)
-                        .modelName(config.modelName())
-                        .tools(toolRegistry)
-                        .toolExecutor(toolExecutor)
-                        .toolDependencies(toolDeps)
-                        .systemPrompt(systemPrompt)
-                        .maxIterations(config.maxIterations())
-                        .timeout(config.timeout())
-                        .tokenBudget(config.tokenBudget())
-                        .memoryStore(memoryStore)
-                        .streaming(true)
-                        .withSmartContinuation()
-                        .build();
-
-        return new AssistantSession(
-                agent, toolRegistry, toolExecutor, memoryStore, cronScheduler,
-                skillRegistry, pluginManager, config);
+        return systemPrompt;
     }
 
     private static String loadCustomInstructions(Path dataPath) {
@@ -156,10 +287,11 @@ public final class AssistantAgentFactory {
         try {
             Class<?> providerClass = Class.forName(className);
             if (config.apiBaseUrl() != null && !config.apiBaseUrl().isBlank()) {
+                String chatPath = resolveChatCompletionsPath(config.apiBaseUrl());
                 return (io.kairo.api.model.ModelProvider)
                         providerClass
-                                .getConstructor(String.class, String.class)
-                                .newInstance(config.apiKey(), config.apiBaseUrl());
+                                .getConstructor(String.class, String.class, String.class)
+                                .newInstance(config.apiKey(), config.apiBaseUrl(), chatPath);
             }
             return (io.kairo.api.model.ModelProvider)
                     providerClass
@@ -171,5 +303,37 @@ public final class AssistantAgentFactory {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create ModelProvider: " + provider, e);
         }
+    }
+
+    private static String resolveChatCompletionsPath(String baseUrl) {
+        if (baseUrl.matches(".*/v\\d+/?$")) {
+            return "/chat/completions";
+        }
+        return "/v1/chat/completions";
+    }
+
+    private static void registerAllTools(DefaultToolRegistry registry) {
+        String[] toolClasses = {
+            "BookmarkTool", "BrowserTool", "CalculatorTool", "CalendarTool",
+            "CheckpointTool", "ClarifyTool", "ClipboardTool", "CodeExecuteTool",
+            "ContactsTool", "CronTool", "DelegateTaskTool", "EncodeTool",
+            "EnvTool", "GitTool", "HttpRequestTool", "ImageGenTool",
+            "JsonTool", "ListDirectoryTool", "McpClientTool", "MemorySearchTool",
+            "NoteTool", "PatchTool", "ProcessTool", "ProjectTool",
+            "ReadFileTool", "ReminderTool", "ScreenshotTool", "SearchFilesTool",
+            "SendMessageTool", "SessionSearchTool", "ShellTool", "SystemInfoTool",
+            "TextTool", "TimeTool", "TodoTool", "UserProfileTool",
+            "VisionTool", "VoiceTool", "WeatherTool", "WebFetchTool",
+            "WorkflowTool", "WriteFileTool"
+        };
+        for (String name : toolClasses) {
+            try {
+                Class<?> clazz = Class.forName("io.kairo.assistant.tool." + name);
+                registry.registerTool(clazz);
+            } catch (Exception e) {
+                log.warn("Failed to register tool {}: {}", name, e.getMessage());
+            }
+        }
+        log.info("Explicitly registered {} tool(s)", registry.getAll().size());
     }
 }
