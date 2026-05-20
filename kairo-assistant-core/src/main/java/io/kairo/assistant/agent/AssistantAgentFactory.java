@@ -33,10 +33,10 @@ import io.kairo.plugin.source.NpmSourceFetcher;
 import io.kairo.plugin.source.SourceFetcherRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.context.CompactionThresholds;
-import io.kairo.core.cron.CronFireCallback;
-import io.kairo.core.cron.CronScheduler;
-import io.kairo.core.cron.CronTaskStore;
-import io.kairo.core.cron.DefaultCronScheduler;
+import io.kairo.api.cron.CronFireCallback;
+import io.kairo.api.cron.CronScheduler;
+import io.kairo.cron.CronTaskStore;
+import io.kairo.cron.DefaultCronScheduler;
 import io.kairo.core.memory.FileMemoryStore;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -102,8 +102,20 @@ public final class AssistantAgentFactory {
 
         MemoryStore memoryStore = new FileMemoryStore(dataPath.resolve("memory"));
 
+        // Late-bound CronFireCallback — the real callback needs an Agent reference (which we
+        // can't build until the tool/skill stack is up). Holder lets the scheduler start
+        // immediately and the callback hot-swap once everything else is wired.
+        java.util.concurrent.atomic.AtomicReference<CronFireCallback> cronCallbackHolder =
+                new java.util.concurrent.atomic.AtomicReference<>(task -> {});
         CronTaskStore cronStore = new CronTaskStore(dataPath.resolve("cron"));
-        CronFireCallback cronCallback = task -> {};
+        CronFireCallback cronCallback = task -> cronCallbackHolder.get().onFire(task);
+        io.kairo.cron.CronChainContext cronChain = new io.kairo.cron.CronChainContext();
+        io.kairo.cron.CronDeliveryRegistry cronDelivery =
+                new io.kairo.cron.CronDeliveryRegistry()
+                        .register(new io.kairo.cron.LogCronDelivery())
+                        .register(new io.kairo.cron.FileCronDelivery())
+                        .register(new io.kairo.cron.HttpCronDelivery())
+                        .register(io.kairo.cron.HttpCronDelivery.https());
         CronScheduler cronScheduler =
                 new DefaultCronScheduler(cronStore, cronCallback, ZoneId.systemDefault());
 
@@ -167,6 +179,27 @@ public final class AssistantAgentFactory {
 
         Agent agent = buildAgent(config, modelProvider, config.modelName(),
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore, hookBridge);
+
+        // Install the real cron callback: spawn an ephemeral agent per fire (so cron prompts
+        // don't pollute the live REPL conversation), honour skill/workdir/no-agent/chain, route
+        // deliveries via the registry, and run everything through the prompt-injection guard.
+        final String finalSystemPrompt = systemPrompt;
+        AssistantConfig finalConfig = config;
+        java.util.function.Supplier<Agent> ephemeralAgentSupplier =
+                () -> buildAgent(
+                        finalConfig,
+                        modelProvider,
+                        finalConfig.modelName(),
+                        toolRegistry,
+                        toolExecutor,
+                        toolDeps,
+                        finalSystemPrompt,
+                        memoryStore,
+                        null);
+        CronFireCallback realCron =
+                new AssistantCronCallback(
+                        ephemeralAgentSupplier, skillRegistry, cronChain, cronDelivery);
+        cronCallbackHolder.set(new PromptInjectionGuard(realCron));
 
         return new AssistantSession(
                 agent,
