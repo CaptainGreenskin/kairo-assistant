@@ -14,6 +14,9 @@ export const translations = {
     "tab.create": "New Task",
     "tab.evolution": "Evolution",
     "tab.dashboard": "Dashboard",
+    "tab.sessions": "Sessions",
+    "tab.memory": "Memory",
+    "tab.plugins": "Plugins",
 
     "nav.theme": "Theme",
     "nav.lang": "Language",
@@ -42,6 +45,9 @@ export const translations = {
     "tab.create": "新建任务",
     "tab.evolution": "演化",
     "tab.dashboard": "概览",
+    "tab.sessions": "会话",
+    "tab.memory": "记忆",
+    "tab.plugins": "插件",
 
     "nav.theme": "主题",
     "nav.lang": "语言",

@@ -4,6 +4,9 @@ import { TaskListPage } from "../../pages/TaskListPage";
 import { TaskCreatePage } from "../../pages/TaskCreatePage";
 import { EvolutionPage } from "../../pages/EvolutionPage";
 import { DashboardPage } from "../../pages/DashboardPage";
+import { PluginsPage } from "../../pages/PluginsPage";
+import { MemoryPage } from "../../pages/MemoryPage";
+import { SessionsPage } from "../../pages/SessionsPage";
 
 /**
  * Central registry of console tabs. Adding a tab is one line: register here +
@@ -47,6 +50,24 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.evolution",
     path: "/evolution",
     component: EvolutionPage,
+  },
+  {
+    id: "sessions",
+    labelKey: "tab.sessions",
+    path: "/sessions",
+    component: SessionsPage,
+  },
+  {
+    id: "memory",
+    labelKey: "tab.memory",
+    path: "/memory",
+    component: MemoryPage,
+  },
+  {
+    id: "plugins",
+    labelKey: "tab.plugins",
+    path: "/plugins",
+    component: PluginsPage,
   },
 ];
 
