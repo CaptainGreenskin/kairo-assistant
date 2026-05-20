@@ -14,7 +14,7 @@ import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.api.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
 import java.nio.file.Path;

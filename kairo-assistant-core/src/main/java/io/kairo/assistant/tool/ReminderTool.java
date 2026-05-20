@@ -8,7 +8,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.api.cron.CronScheduler;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

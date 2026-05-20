@@ -8,7 +8,7 @@ import io.kairo.api.plugin.PluginManager;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.api.cron.CronScheduler;
 import io.kairo.plugin.hook.HookExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

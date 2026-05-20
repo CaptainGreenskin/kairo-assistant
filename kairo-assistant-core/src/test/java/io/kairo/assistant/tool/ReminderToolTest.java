@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.kairo.api.cron.CronTask;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.api.cron.CronScheduler;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;

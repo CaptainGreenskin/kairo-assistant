@@ -3,7 +3,7 @@ package io.kairo.assistant.server;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.cron.CronTask;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.api.cron.CronScheduler;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -117,16 +117,117 @@ class CronControllerTest {
         assertEquals(id, events.get(0).get("id"));
     }
 
+    @Test
+    void pauseAndResumeFlipPausedFlag() {
+        var created = controller.create(Map.of("cron", "0 9 * * *", "prompt", "morning"));
+        String id = (String) created.get("id");
+
+        var paused = controller.pause(id);
+        assertEquals(Boolean.TRUE, paused.get("paused"));
+
+        var resumed = controller.resume(id);
+        assertEquals(Boolean.FALSE, resumed.get("paused"));
+    }
+
+    @Test
+    void editChangesCronAndPrompt() {
+        var created = controller.create(Map.of("cron", "0 9 * * *", "prompt", "morning"));
+        String id = (String) created.get("id");
+
+        var edited =
+                controller.edit(
+                        id, Map.of("cron", "0 10 * * *", "prompt", "later morning"));
+        assertEquals("0 10 * * *", edited.get("cron"));
+        assertEquals("later morning", edited.get("prompt"));
+    }
+
+    @Test
+    void triggerFiresOutsideSchedule() {
+        var created = controller.create(Map.of("cron", "0 0 1 1 *", "prompt", "new year"));
+        String id = (String) created.get("id");
+        var result = controller.trigger(id);
+        assertEquals("triggered", result.get("status"));
+    }
+
+    @Test
+    void noAgentRequiresScript() {
+        var result =
+                controller.create(
+                        Map.of(
+                                "cron",
+                                "0 * * * *",
+                                "prompt",
+                                "ignored",
+                                "noAgent",
+                                true));
+        assertEquals("noAgent=true requires non-blank script", result.get("error"));
+    }
+
+    @Test
+    void createWithSkillsAndWorkdirSurfacesOnView() {
+        var result =
+                controller.create(
+                        Map.of(
+                                "cron",
+                                "0 * * * *",
+                                "prompt",
+                                "do thing",
+                                "skills",
+                                List.of("alpha", "beta"),
+                                "workdir",
+                                "/var/work"));
+        assertEquals("created", result.get("status"));
+        assertEquals(List.of("alpha", "beta"), result.get("skills"));
+        assertEquals("/var/work", result.get("workdir"));
+    }
+
     private static class InMemoryCronScheduler implements CronScheduler {
         private final List<CronTask> tasks = new ArrayList<>();
 
         @Override
         public CronTask create(String cron, String prompt, boolean recurring, boolean durable) {
-            var task = new CronTask(
-                    UUID.randomUUID().toString().substring(0, 8),
-                    cron, prompt, Instant.now(), null, recurring, durable);
+            var task =
+                    new CronTask(
+                            UUID.randomUUID().toString().substring(0, 8),
+                            cron,
+                            prompt,
+                            Instant.now(),
+                            null,
+                            recurring,
+                            durable);
             tasks.add(task);
             return task;
+        }
+
+        @Override
+        public CronTask create(
+                String cron, String prompt, io.kairo.api.cron.CronTaskOptions options) {
+            if (options.noAgent() && (options.script() == null || options.script().isBlank())) {
+                throw new IllegalArgumentException("noAgent=true requires non-blank script");
+            }
+            var base = create(cron, prompt, options.recurring(), options.durable());
+            // Build a new task that includes the M3 options fields.
+            var t =
+                    new CronTask(
+                            base.id(),
+                            base.cron(),
+                            base.prompt(),
+                            base.createdAt(),
+                            base.lastFiredAt(),
+                            base.recurring(),
+                            base.durable(),
+                            false,
+                            0,
+                            null,
+                            null,
+                            options.skills(),
+                            options.workdir(),
+                            options.noAgent(),
+                            options.script(),
+                            options.contextFromTaskId());
+            tasks.removeIf(x -> x.id().equals(t.id()));
+            tasks.add(t);
+            return t;
         }
 
         @Override
@@ -139,7 +240,43 @@ class CronControllerTest {
             return List.copyOf(tasks);
         }
 
-        @Override public void start() {}
-        @Override public void stop() {}
+        @Override
+        public java.util.Optional<CronTask> pause(String taskId) {
+            return mutate(taskId, t -> t.withPaused(true));
+        }
+
+        @Override
+        public java.util.Optional<CronTask> resume(String taskId) {
+            return mutate(taskId, t -> t.withPaused(false));
+        }
+
+        @Override
+        public java.util.Optional<CronTask> edit(
+                String taskId, String newCron, String newPrompt) {
+            return mutate(taskId, t -> t.withCronAndPrompt(newCron, newPrompt));
+        }
+
+        @Override
+        public boolean trigger(String taskId) {
+            return tasks.stream().anyMatch(t -> t.id().equals(taskId));
+        }
+
+        private java.util.Optional<CronTask> mutate(
+                String taskId, java.util.function.Function<CronTask, CronTask> f) {
+            for (int i = 0; i < tasks.size(); i++) {
+                if (tasks.get(i).id().equals(taskId)) {
+                    CronTask updated = f.apply(tasks.get(i));
+                    tasks.set(i, updated);
+                    return java.util.Optional.of(updated);
+                }
+            }
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public void start() {}
+
+        @Override
+        public void stop() {}
     }
 }
