@@ -50,6 +50,7 @@ public final class SubagentAgentRunner implements AgentRunner {
     private final ToolRegistry toolRegistry;
     private final ToolExecutor toolExecutor;
     private final String systemPrompt;
+    private final PluginAuditLogger audit;
 
     public SubagentAgentRunner(
             ModelProvider modelProvider,
@@ -57,6 +58,16 @@ public final class SubagentAgentRunner implements AgentRunner {
             ToolRegistry toolRegistry,
             ToolExecutor toolExecutor,
             String systemPrompt) {
+        this(modelProvider, defaultModelName, toolRegistry, toolExecutor, systemPrompt, null);
+    }
+
+    public SubagentAgentRunner(
+            ModelProvider modelProvider,
+            String defaultModelName,
+            ToolRegistry toolRegistry,
+            ToolExecutor toolExecutor,
+            String systemPrompt,
+            PluginAuditLogger audit) {
         this.modelProvider = modelProvider;
         this.defaultModelName = defaultModelName;
         this.toolRegistry = toolRegistry;
@@ -66,6 +77,7 @@ public final class SubagentAgentRunner implements AgentRunner {
                         ? "You are a Kairo plugin hook sub-agent. Reason briefly and return"
                                 + " a concise final answer."
                         : systemPrompt;
+        this.audit = audit;
     }
 
     @Override
@@ -75,6 +87,13 @@ public final class SubagentAgentRunner implements AgentRunner {
         }
         String modelName =
                 (modelHint == null || modelHint.isBlank()) ? defaultModelName : modelHint;
+        if (audit != null) {
+            try {
+                audit.recordSubagentDispatch("<bridge>", prompt, modelName);
+            } catch (Exception e) {
+                log.debug("Audit log write skipped for sub-agent dispatch: {}", e.getMessage());
+            }
+        }
         return Mono.fromCallable(
                         () -> {
                             Agent agent =

@@ -262,7 +262,7 @@ public class ReplSession {
             case "/permissions" -> printPermissions();
             case "/channels" -> printChannels();
             case "/plugins" -> printPlugins();
-            case "/plugin" -> handlePluginCommand(arg);
+            case "/plugin" -> handlePluginCommand(arg, reader);
             case "/version" -> printVersion();
             case "/interrupt" -> doInterrupt();
             case "/sessions" -> printSessions();
@@ -484,7 +484,7 @@ public class ReplSession {
         w.flush();
     }
 
-    private void handlePluginCommand(String arg) {
+    private void handlePluginCommand(String arg, LineReader reader) {
         var w = terminal.writer();
         if (session.pluginManager() == null) {
             w.println("  Plugin system not initialized");
@@ -501,10 +501,12 @@ public class ReplSession {
         switch (sub) {
             case "list" -> printPlugins();
             case "install" -> pluginInstall(rest);
-            case "enable" -> pluginEnable(rest);
+            case "enable" -> pluginEnable(rest, reader);
             case "disable" -> pluginDisable(rest);
             case "uninstall", "remove" -> pluginUninstall(rest);
             case "update" -> pluginUpdate(rest);
+            case "marketplace" -> handleMarketplaceCommand(rest);
+            case "trust" -> handleTrustCommand(rest);
             default -> {
                 w.println("  Unknown subcommand: " + sub);
                 printPluginUsage();
@@ -518,10 +520,16 @@ public class ReplSession {
         w.println("Plugin commands:");
         w.println("  /plugin list                       List installed plugins");
         w.println("  /plugin install <source>           Install (path / github:owner/repo / git+url / npm:pkg@ver)");
-        w.println("  /plugin enable <id-prefix>         Enable a plugin");
+        w.println("  /plugin enable <id-prefix>         Enable a plugin (prompts on first enable)");
         w.println("  /plugin disable <id-prefix>        Disable a plugin (keeps install)");
         w.println("  /plugin uninstall <id-prefix>      Uninstall a plugin");
         w.println("  /plugin update <id-prefix>         Re-load manifest from disk");
+        w.println("  /plugin marketplace add <alias> <url>  Subscribe to a Claude Code marketplace");
+        w.println("  /plugin marketplace remove <alias>     Unsubscribe");
+        w.println("  /plugin marketplace list               List subscribed marketplaces + their plugins");
+        w.println("  /plugin marketplace refresh            Re-fetch every subscribed marketplace");
+        w.println("  /plugin trust list                     Show approved plugins");
+        w.println("  /plugin trust revoke <plugin-name>     Drop a prior approval (re-prompts next enable)");
         w.println();
         w.flush();
     }
@@ -554,8 +562,99 @@ public class ReplSession {
         w.flush();
     }
 
-    private void pluginEnable(String idPrefix) {
-        applyToResolvedPlugin(idPrefix, "enable", id -> session.pluginManager().enable(id).block(java.time.Duration.ofMinutes(2)));
+    private void pluginEnable(String idPrefix, LineReader reader) {
+        var w = terminal.writer();
+        if (idPrefix == null || idPrefix.isBlank()) {
+            w.println("  Usage: /plugin enable <id-prefix>");
+            w.flush();
+            return;
+        }
+        String id = resolvePluginId(idPrefix);
+        if (id == null) {
+            w.println("  No plugin matches: " + idPrefix);
+            w.flush();
+            return;
+        }
+        var inst = session.pluginManager().list().stream()
+                .filter(p -> p.id().equals(id))
+                .findFirst()
+                .orElse(null);
+        if (inst == null) {
+            w.println("  Plugin disappeared: " + id);
+            w.flush();
+            return;
+        }
+        // Trust check: if PluginTrustStore is wired and this plugin hasn't been approved yet,
+        // summarise what it ships and prompt.
+        var trust = session.pluginTrustStore();
+        if (trust != null && !trust.isApproved(inst.metadata().name())) {
+            if (!promptForTrust(inst, reader)) {
+                w.println("  Enable aborted by user.");
+                w.flush();
+                return;
+            }
+            // Marketplace-supplied trustLevel (if known) drives whether future installs of the
+            // same plugin should still require confirmation.
+            var marketplace = session.marketplaceStore();
+            io.kairo.assistant.agent.PluginTrustStore.TrustLevel level =
+                    io.kairo.assistant.agent.PluginTrustStore.TrustLevel.UNKNOWN;
+            if (marketplace != null) {
+                var lookup = marketplace.resolvePlugin(inst.metadata().name()).orElse(null);
+                if (lookup != null) {
+                    level = io.kairo.assistant.agent.PluginTrustStore.TrustLevel.fromString(
+                            lookup.trustLevel());
+                }
+            }
+            trust.recordApproval(inst.metadata().name(), level);
+        }
+        try {
+            session.pluginManager().enable(id).block(java.time.Duration.ofMinutes(2));
+            w.printf("  Enabled: %s%n", id);
+        } catch (Exception e) {
+            w.println("  enable failed: " + rootCauseMessage(e));
+        }
+        w.flush();
+    }
+
+    private boolean promptForTrust(io.kairo.api.plugin.PluginInstallation inst, LineReader reader) {
+        var w = terminal.writer();
+        // Load the manifest to count components for the trust summary.
+        io.kairo.api.plugin.PluginManifest manifest;
+        try {
+            manifest = new io.kairo.plugin.PluginLoader().load(inst.rootPath(), null);
+        } catch (Exception e) {
+            w.println("  WARN: cannot inspect plugin contents for trust prompt: " + e.getMessage());
+            return false;
+        }
+        int hooks = 0, mcps = 0, agents = 0, commands = 0, skills = 0, bins = 0;
+        for (var c : manifest.components()) {
+            if (c instanceof io.kairo.api.plugin.PluginComponent.HookComponent) hooks++;
+            else if (c instanceof io.kairo.api.plugin.PluginComponent.McpComponent) mcps++;
+            else if (c instanceof io.kairo.api.plugin.PluginComponent.AgentComponent) agents++;
+            else if (c instanceof io.kairo.api.plugin.PluginComponent.CommandComponent) commands++;
+            else if (c instanceof io.kairo.api.plugin.PluginComponent.SkillComponent) skills++;
+            else if (c instanceof io.kairo.api.plugin.PluginComponent.BinComponent) bins++;
+        }
+        w.println();
+        w.printf("  Enabling '%s' v%s (id=%s)%n",
+                inst.metadata().name(), inst.metadata().version(), inst.id());
+        w.printf("    Source: %s%n", inst.source().type());
+        w.printf("    Contains: %d hook(s), %d MCP server(s), %d agent(s), %d command(s),"
+                        + " %d skill(s), %d bin(s)%n",
+                hooks, mcps, agents, commands, skills, bins);
+        if (hooks > 0 || mcps > 0 || bins > 0) {
+            w.println("    NOTE: hooks/MCP/bin can execute arbitrary code with this assistant's"
+                    + " privileges.");
+        }
+        w.println("  Confirm enable? [y/N]");
+        w.flush();
+        try {
+            String answer = reader.readLine("trust> ");
+            return answer != null && (answer.trim().equalsIgnoreCase("y")
+                    || answer.trim().equalsIgnoreCase("yes"));
+        } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
+            return false;
+        }
     }
 
     private void pluginDisable(String idPrefix) {
@@ -568,6 +667,105 @@ public class ReplSession {
 
     private void pluginUpdate(String idPrefix) {
         applyToResolvedPlugin(idPrefix, "update", id -> session.pluginManager().update(id).block(java.time.Duration.ofMinutes(2)));
+    }
+
+    private void handleMarketplaceCommand(String rest) {
+        var w = terminal.writer();
+        var store = session.marketplaceStore();
+        if (store == null) {
+            w.println("  Marketplace store not initialized");
+            w.flush();
+            return;
+        }
+        String[] parts = rest == null ? new String[0] : rest.trim().split("\\s+", 3);
+        String sub = parts.length > 0 ? parts[0] : "";
+        switch (sub) {
+            case "add" -> {
+                if (parts.length < 3) {
+                    w.println("  Usage: /plugin marketplace add <alias> <url-or-file-path>");
+                } else {
+                    boolean added = store.add(parts[1], parts[2]);
+                    w.println(added
+                            ? "  Added marketplace '" + parts[1] + "'. Run /plugin marketplace"
+                                    + " refresh to fetch its catalog."
+                            : "  Alias '" + parts[1] + "' already exists.");
+                }
+            }
+            case "remove" -> {
+                if (parts.length < 2) {
+                    w.println("  Usage: /plugin marketplace remove <alias>");
+                } else {
+                    w.println(store.remove(parts[1])
+                            ? "  Removed marketplace '" + parts[1] + "'"
+                            : "  No marketplace with alias: " + parts[1]);
+                }
+            }
+            case "refresh" -> {
+                var fetched = store.refresh();
+                w.printf("  Refreshed %d marketplace(s):%n", fetched.size());
+                fetched.forEach((alias, catalog) ->
+                        w.printf("    %-20s %d plugin(s)  trust=%s%n",
+                                alias, catalog.plugins().size(), catalog.trustLevel()));
+            }
+            case "list", "" -> {
+                var aliases = store.list();
+                if (aliases.isEmpty()) {
+                    w.println("  No marketplaces subscribed.");
+                    w.println("  Try: /plugin marketplace add <alias> <url>");
+                    break;
+                }
+                w.println("  Subscribed marketplaces:");
+                aliases.forEach((alias, source) -> w.printf("    %-20s %s%n", alias, source));
+                var allPlugins = store.listAllPlugins();
+                if (!allPlugins.isEmpty()) {
+                    w.println();
+                    w.println("  Plugins by marketplace:");
+                    allPlugins.forEach((alias, plugins) -> {
+                        w.printf("    [%s]%n", alias);
+                        plugins.forEach(p -> w.printf("      - %-25s %s%n",
+                                p.name(), p.description() == null ? "" : p.description()));
+                    });
+                }
+            }
+            default -> w.println("  Unknown marketplace subcommand: " + sub);
+        }
+        w.flush();
+    }
+
+    private void handleTrustCommand(String rest) {
+        var w = terminal.writer();
+        var trust = session.pluginTrustStore();
+        if (trust == null) {
+            w.println("  Trust store not initialized");
+            w.flush();
+            return;
+        }
+        String[] parts = rest == null ? new String[0] : rest.trim().split("\\s+", 2);
+        String sub = parts.length > 0 ? parts[0] : "";
+        switch (sub) {
+            case "list", "" -> {
+                var snap = trust.snapshot();
+                if (snap.isEmpty()) {
+                    w.println("  No plugin approvals on record.");
+                    break;
+                }
+                w.println("  Plugin approvals:");
+                snap.entrySet().stream()
+                        .sorted(java.util.Map.Entry.comparingByKey())
+                        .forEach(e -> w.printf("    %-30s %-10s %s%n",
+                                e.getKey(), e.getValue().level(), e.getValue().approvedAt()));
+            }
+            case "revoke" -> {
+                if (parts.length < 2) {
+                    w.println("  Usage: /plugin trust revoke <plugin-name>");
+                } else {
+                    trust.revoke(parts[1]);
+                    w.println("  Revoked approval for: " + parts[1]);
+                }
+            }
+            default -> w.println("  Unknown trust subcommand: " + sub);
+        }
+        w.flush();
     }
 
     private void applyToResolvedPlugin(String idPrefix, String label, java.util.function.Consumer<String> action) {

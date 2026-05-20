@@ -150,8 +150,13 @@ public final class AssistantAgentFactory {
         }
 
         // Bridge plugin hooks onto the agent's lifecycle so PreToolUse/PostToolUse/SessionStart/
-        // SessionEnd/Stop fire automatically via PluginHookCatalog.
-        PluginHookBridge hookBridge = new PluginHookBridge(pluginRuntime.hookCatalog());
+        // SessionEnd/Stop fire automatically via PluginHookCatalog. The audit logger captures
+        // every dispatched event for forensic review.
+        PluginHookBridge hookBridge =
+                new PluginHookBridge(
+                        pluginRuntime.hookCatalog(),
+                        HookTimeoutConfig.fromEnvironment(),
+                        pluginRuntime.auditLogger());
 
         // Re-enable plugins that were enabled in the previous session.
         try {
@@ -293,11 +298,25 @@ public final class AssistantAgentFactory {
                         registrar,
                         fetchers);
 
+        // Marketplace registry + trust store + audit logger: REPL plugin commands consume these.
+        // Build audit logger early so we can pass it into the hook executor's action handlers.
+        MarketplaceStore marketplacesEarly =
+                new MarketplaceStore(pluginRoot.resolve("marketplaces.json"));
+        PluginTrustStore trustStoreEarly = new PluginTrustStore(pluginRoot.resolve("trust.json"));
+        PluginAuditLogger auditLoggerEarly =
+                new PluginAuditLogger(pluginRoot.resolve("audit.ndjson"));
+
         // Gap 3: hook executor + per-event catalog. Handlers are reactive and reuse the assistant's
         // ModelProvider / tools / MCP plumbing so plugin hook authors see the same runtime as the
         // agent itself.
         HookExecutor hookExecutor =
-                buildHookExecutor(modelProvider, config, toolRegistry, toolExecutor, mcpRegistrar);
+                buildHookExecutor(
+                        modelProvider,
+                        config,
+                        toolRegistry,
+                        toolExecutor,
+                        mcpRegistrar,
+                        auditLoggerEarly);
         PluginHookCatalog hookCatalog = new PluginHookCatalog(pluginManager, hookExecutor);
 
         // Output-style catalog: subscribes to plugin events; render() output appended to system
@@ -309,12 +328,6 @@ public final class AssistantAgentFactory {
         EnabledPluginsStore enabledStore =
                 new EnabledPluginsStore(pluginRoot.resolve("enabled.json"), pluginManager);
 
-        // Marketplace registry + trust store + audit logger: REPL plugin commands consume these.
-        MarketplaceStore marketplaces = new MarketplaceStore(pluginRoot.resolve("marketplaces.json"));
-        PluginTrustStore trustStore = new PluginTrustStore(pluginRoot.resolve("trust.json"));
-        PluginAuditLogger auditLogger =
-                new PluginAuditLogger(pluginRoot.resolve("audit.ndjson"));
-
         return new PluginRuntime(
                 pluginManager,
                 mcpPlugin,
@@ -323,9 +336,9 @@ public final class AssistantAgentFactory {
                 hookCatalog,
                 outputStyleCatalog,
                 enabledStore,
-                marketplaces,
-                trustStore,
-                auditLogger);
+                marketplacesEarly,
+                trustStoreEarly,
+                auditLoggerEarly);
     }
 
     /**
@@ -346,7 +359,8 @@ public final class AssistantAgentFactory {
             AssistantConfig config,
             ToolRegistry toolRegistry,
             io.kairo.core.tool.DefaultToolExecutor toolExecutor,
-            PluginMcpRegistrar mcpRegistrar) {
+            PluginMcpRegistrar mcpRegistrar,
+            PluginAuditLogger audit) {
         ModelConfig defaultModel =
                 ModelConfig.builder()
                         .model(config.modelName())
@@ -362,8 +376,10 @@ public final class AssistantAgentFactory {
                                 config.modelName(),
                                 toolRegistry,
                                 toolExecutor,
-                                null)));
-        executor.withHandler(new McpToolHookActionHandler(new PluginMcpToolDispatcher(mcpRegistrar)));
+                                null,
+                                audit)));
+        executor.withHandler(
+                new McpToolHookActionHandler(new PluginMcpToolDispatcher(mcpRegistrar, audit)));
         return executor;
     }
 

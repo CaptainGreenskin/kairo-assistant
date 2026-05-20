@@ -76,14 +76,21 @@ public final class PluginHookBridge {
 
     private final PluginHookCatalog catalog;
     private final HookTimeoutConfig timeouts;
+    private final PluginAuditLogger audit;
 
     public PluginHookBridge(PluginHookCatalog catalog) {
-        this(catalog, HookTimeoutConfig.fromEnvironment());
+        this(catalog, HookTimeoutConfig.fromEnvironment(), null);
     }
 
     public PluginHookBridge(PluginHookCatalog catalog, HookTimeoutConfig timeouts) {
+        this(catalog, timeouts, null);
+    }
+
+    public PluginHookBridge(
+            PluginHookCatalog catalog, HookTimeoutConfig timeouts, PluginAuditLogger audit) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.timeouts = timeouts == null ? HookTimeoutConfig.defaults() : timeouts;
+        this.audit = audit;
     }
 
     // ── Pre* events: block on decisions ─────────────────────────────────────
@@ -191,6 +198,7 @@ public final class PluginHookBridge {
             log.debug("Plugin hooks disabled via config; skipping '{}'", eventName);
             return out;
         }
+        recordAudit(eventName, payload);
         try {
             List<HookExecutor.HookResult> results =
                     catalog.dispatch(eventName, payload)
@@ -222,6 +230,7 @@ public final class PluginHookBridge {
 
     private void fireAndForget(String eventName, Map<String, Object> payload) {
         if (timeouts.disabled()) return;
+        recordAudit(eventName, payload);
         try {
             catalog.dispatch(eventName, payload)
                     .timeout(timeouts.postEventBudget())
@@ -236,6 +245,23 @@ public final class PluginHookBridge {
         } catch (Exception e) {
             log.warn(
                     "Plugin hook bridge '{}' synchronous error: {}", eventName, e.getMessage());
+        }
+    }
+
+    /**
+     * Best-effort audit logging — one line per dispatched event. We don't expand per-action
+     * because the catalog handles fan-out internally; logging the event name + payload is
+     * sufficient for forensic reconstruction.
+     */
+    private void recordAudit(String eventName, Map<String, Object> payload) {
+        if (audit == null) return;
+        try {
+            // We don't know which plugin contributed which action at this layer — the catalog
+            // owns that mapping. Use "<bridge>" as the attributed plugin so audit consumers
+            // can still distinguish bridge-driven events from per-plugin direct dispatches.
+            audit.recordHookDispatch("<bridge>", eventName, "dispatch", payload);
+        } catch (Exception e) {
+            log.debug("Audit log write skipped for hook '{}': {}", eventName, e.getMessage());
         }
     }
 

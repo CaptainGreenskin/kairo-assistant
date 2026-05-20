@@ -41,9 +41,15 @@ public final class PluginMcpToolDispatcher implements McpToolDispatcher {
     private static final Logger log = LoggerFactory.getLogger(PluginMcpToolDispatcher.class);
 
     private final PluginMcpRegistrar registrar;
+    private final PluginAuditLogger audit;
 
     public PluginMcpToolDispatcher(PluginMcpRegistrar registrar) {
+        this(registrar, null);
+    }
+
+    public PluginMcpToolDispatcher(PluginMcpRegistrar registrar, PluginAuditLogger audit) {
         this.registrar = Objects.requireNonNull(registrar, "registrar");
+        this.audit = audit;
     }
 
     @Override
@@ -54,6 +60,7 @@ public final class PluginMcpToolDispatcher implements McpToolDispatcher {
         if (tool == null || tool.isBlank()) {
             return Mono.just(ToolResult.error("mcp_tool", "missing tool name"));
         }
+        recordAudit(server, tool, input);
 
         McpPluginTool match = findTool(server, tool);
         if (match == null) {
@@ -90,6 +97,17 @@ public final class PluginMcpToolDispatcher implements McpToolDispatcher {
         } catch (RuntimeException e) {
             return Mono.just(
                     ToolResult.error("mcp_tool", "executor threw: " + e.getMessage()));
+        }
+    }
+
+    private void recordAudit(String server, String tool, Map<String, Object> input) {
+        if (audit == null) return;
+        try {
+            // Best-effort: we don't know which plugin requested the call from this layer; the
+            // server/tool pair is the durable identifier.
+            audit.recordMcpToolDispatch("<bridge>", server, tool, input);
+        } catch (Exception e) {
+            log.debug("Audit log write skipped for mcp_tool '{}::{}': {}", server, tool, e.getMessage());
         }
     }
 
