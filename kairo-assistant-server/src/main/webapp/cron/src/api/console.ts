@@ -149,6 +149,52 @@ export const toolsApi = {
   categories: () => api.get<unknown>("/api/tools/categories"),
 };
 
+/** ----- Tool execution history ----- */
+export interface ToolHistoryEntry {
+  tool: string;
+  timestamp: string;
+  durationMs: number;
+  success: boolean;
+  error?: string;
+}
+export interface ToolHistoryResponse {
+  totalCalls: number;
+  totalErrors?: number;
+  avgDurationMs?: number;
+  calls: ToolHistoryEntry[];
+  note?: string;
+}
+export const toolHistoryApi = {
+  list: (limit = 50) =>
+    api.get<ToolHistoryResponse>(`/api/tools/history?limit=${limit}`),
+};
+
+/** ----- System info + Agent state ----- */
+export interface SystemInfo {
+  javaVersion?: string;
+  javaVendor?: string;
+  os?: string;
+  osVersion?: string;
+  arch?: string;
+  processors?: number;
+  memoryUsedMB?: number;
+  memoryTotalMB?: number;
+  memoryMaxMB?: number;
+  activeThreads?: number;
+  userDir?: string;
+  userHome?: string;
+  fileEncoding?: string;
+}
+export interface AgentState {
+  state?: string;
+  agentId?: string;
+  agentName?: string;
+}
+export const systemApi = {
+  info: () => api.get<SystemInfo>("/api/system"),
+  agent: () => api.get<AgentState>("/api/agent/state"),
+};
+
 /** ----- Conversations ----- */
 export interface ConversationSummary {
   sessionId: string;

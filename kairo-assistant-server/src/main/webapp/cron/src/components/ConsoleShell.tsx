@@ -7,6 +7,7 @@ import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { CommandPalette } from "./CommandPalette";
 import { BootScreen, useBootScreen } from "./BootScreen";
+import { useSseStatus } from "../hooks/useEventStream";
 
 interface Props {
   children: React.ReactNode;
@@ -102,7 +103,10 @@ export function ConsoleShell({ children }: Props) {
           <span className="mx-2">·</span>
           <kbd className="font-mono mx-1">?</kbd> {t("nav.help")}
         </span>
-        <span className="font-mono opacity-60">kairo-console</span>
+        <span className="flex items-center gap-2 font-mono opacity-60">
+          <SseStatusBadge />
+          kairo-console
+        </span>
       </footer>
 
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
@@ -110,6 +114,24 @@ export function ConsoleShell({ children }: Props) {
       {boot.open && <BootScreen onDone={boot.dismiss} />}
     </div>
   );
+}
+
+function SseStatusBadge() {
+  const status = useSseStatus();
+  const { t } = useI18n();
+  const tone =
+    status === "live"
+      ? "bg-success/20 text-success"
+      : status === "connecting"
+      ? "bg-warn/20 text-warn"
+      : "bg-red-500/20 text-red-300";
+  const label =
+    status === "live"
+      ? `● ${t("status.live")}`
+      : status === "connecting"
+      ? t("status.connecting")
+      : t("status.offline");
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${tone}`}>{label}</span>;
 }
 
 function ThemePicker({

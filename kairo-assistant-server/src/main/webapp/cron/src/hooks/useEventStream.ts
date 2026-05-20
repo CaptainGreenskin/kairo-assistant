@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 /**
@@ -23,6 +24,8 @@ interface KairoSseEvent {
   attributes: Record<string, unknown>;
 }
 
+export type SseStatus = "connecting" | "live" | "offline";
+
 const STREAM_URL = "/api/events/stream?domain=cron&domain=evolution";
 
 const INVALIDATE_MAP: Record<string, ReadonlyArray<readonly unknown[]>> = {
@@ -30,15 +33,29 @@ const INVALIDATE_MAP: Record<string, ReadonlyArray<readonly unknown[]>> = {
   evolution: [["evolution", "skills"]],
 };
 
+const SseStatusContext = createContext<SseStatus>("connecting");
+
+export const useSseStatus = () => useContext(SseStatusContext);
+
 /**
- * Mount one EventSource per page. The browser keeps the underlying HTTP
- * connection alive until the tab closes or the user navigates away; SSE
- * also reconnects automatically on transient network drops.
+ * Mount one EventSource per app, expose connection status via context.
+ * The browser keeps the underlying HTTP connection alive until the tab
+ * closes; SSE also reconnects automatically on transient network drops.
  */
-export function useEventStream() {
+export function EventStreamProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const [status, setStatus] = useState<SseStatus>("connecting");
+
   useEffect(() => {
     const source = new EventSource(STREAM_URL);
+    setStatus("connecting");
+
+    source.onopen = () => setStatus("live");
+    source.onerror = () => {
+      // EventSource auto-reconnects; readyState transitions tell us where we are.
+      setStatus(source.readyState === EventSource.CLOSED ? "offline" : "connecting");
+    };
+
     const onKairo = (ev: MessageEvent) => {
       try {
         const payload = JSON.parse(ev.data) as KairoSseEvent;
@@ -53,14 +70,12 @@ export function useEventStream() {
       }
     };
     source.addEventListener("kairo", onKairo as EventListener);
-    source.onerror = () => {
-      // Browser will auto-reconnect — no manual handling needed for transient
-      // errors. We log so persistent failures show up in DevTools.
-      console.debug("SSE connection hiccup; browser will retry");
-    };
+
     return () => {
       source.removeEventListener("kairo", onKairo as EventListener);
       source.close();
     };
   }, [qc]);
+
+  return createElement(SseStatusContext.Provider, { value: status }, children);
 }
