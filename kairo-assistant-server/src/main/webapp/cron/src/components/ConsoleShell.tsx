@@ -5,6 +5,8 @@ import { THEMES, useTheme } from "../hooks/useTheme";
 import { useI18n } from "../i18n";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { ShortcutHelp } from "./ShortcutHelp";
+import { CommandPalette } from "./CommandPalette";
+import { BootScreen, useBootScreen } from "./BootScreen";
 
 interface Props {
   children: React.ReactNode;
@@ -14,6 +16,7 @@ export function ConsoleShell({ children }: Props) {
   const { t, lang, toggleLang } = useI18n();
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
+  const boot = useBootScreen();
   const loc = useLocation();
   const visible = TABS.filter((tab) => !tab.hidden);
 
@@ -93,6 +96,8 @@ export function ConsoleShell({ children }: Props) {
           <span className="opacity-50">{t("status.shortcuts")}:</span>{" "}
           <kbd className="font-mono mx-1">1-9</kbd> {t("status.tabs")}
           <span className="mx-2">·</span>
+          <kbd className="font-mono mx-1">⌘K</kbd> palette
+          <span className="mx-2">·</span>
           <kbd className="font-mono mx-1">t</kbd> {t("status.theme")}
           <span className="mx-2">·</span>
           <kbd className="font-mono mx-1">?</kbd> {t("nav.help")}
@@ -101,6 +106,8 @@ export function ConsoleShell({ children }: Props) {
       </footer>
 
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <CommandPalette />
+      {boot.open && <BootScreen onDone={boot.dismiss} />}
     </div>
   );
 }

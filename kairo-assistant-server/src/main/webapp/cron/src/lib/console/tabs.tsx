@@ -7,6 +7,11 @@ import { DashboardPage } from "../../pages/DashboardPage";
 import { PluginsPage } from "../../pages/PluginsPage";
 import { MemoryPage } from "../../pages/MemoryPage";
 import { SessionsPage } from "../../pages/SessionsPage";
+import { HealthPage } from "../../pages/HealthPage";
+import { AnalyticsPage } from "../../pages/AnalyticsPage";
+import { SkillsPage } from "../../pages/SkillsPage";
+import { ToolsPage } from "../../pages/ToolsPage";
+import { ChannelsPage } from "../../pages/ChannelsPage";
 
 /**
  * Central registry of console tabs. Adding a tab is one line: register here +
@@ -64,10 +69,40 @@ export const TABS: ConsoleTab[] = [
     component: MemoryPage,
   },
   {
+    id: "skills",
+    labelKey: "tab.skills",
+    path: "/skills",
+    component: SkillsPage,
+  },
+  {
+    id: "tools",
+    labelKey: "tab.tools",
+    path: "/tools",
+    component: ToolsPage,
+  },
+  {
     id: "plugins",
     labelKey: "tab.plugins",
     path: "/plugins",
     component: PluginsPage,
+  },
+  {
+    id: "channels",
+    labelKey: "tab.channels",
+    path: "/channels",
+    component: ChannelsPage,
+  },
+  {
+    id: "analytics",
+    labelKey: "tab.analytics",
+    path: "/analytics",
+    component: AnalyticsPage,
+  },
+  {
+    id: "health",
+    labelKey: "tab.health",
+    path: "/health",
+    component: HealthPage,
   },
 ];
 

@@ -17,6 +17,11 @@ export const translations = {
     "tab.sessions": "Sessions",
     "tab.memory": "Memory",
     "tab.plugins": "Plugins",
+    "tab.skills": "Skills",
+    "tab.tools": "Tools",
+    "tab.channels": "Channels",
+    "tab.analytics": "Analytics",
+    "tab.health": "Health",
 
     "nav.theme": "Theme",
     "nav.lang": "Language",
@@ -48,6 +53,11 @@ export const translations = {
     "tab.sessions": "会话",
     "tab.memory": "记忆",
     "tab.plugins": "插件",
+    "tab.skills": "技能",
+    "tab.tools": "工具",
+    "tab.channels": "通道",
+    "tab.analytics": "分析",
+    "tab.health": "健康",
 
     "nav.theme": "主题",
     "nav.lang": "语言",
