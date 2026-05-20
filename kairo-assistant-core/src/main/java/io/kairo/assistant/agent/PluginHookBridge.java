@@ -15,6 +15,8 @@ import io.kairo.api.hook.OnError;
 import io.kairo.api.hook.OnNotification;
 import io.kairo.api.hook.OnSessionEnd;
 import io.kairo.api.hook.OnSessionStart;
+import io.kairo.api.hook.OnSubagentStart;
+import io.kairo.api.hook.OnSubagentStop;
 import io.kairo.api.hook.OnUserPromptSubmit;
 import io.kairo.api.hook.PostActing;
 import io.kairo.api.hook.PostActingEvent;
@@ -22,9 +24,10 @@ import io.kairo.api.hook.PreActing;
 import io.kairo.api.hook.PreActingEvent;
 import io.kairo.api.hook.SessionEndEvent;
 import io.kairo.api.hook.SessionStartEvent;
+import io.kairo.api.hook.SubagentStartEvent;
+import io.kairo.api.hook.SubagentStopEvent;
 import io.kairo.api.hook.UserPromptSubmitEvent;
 import io.kairo.plugin.hook.HookExecutor;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,16 +74,16 @@ public final class PluginHookBridge {
 
     private static final Logger log = LoggerFactory.getLogger(PluginHookBridge.class);
 
-    /** Block at most this long waiting for plugin hook decisions on Pre* events. */
-    private static final Duration DECISION_TIMEOUT = Duration.ofSeconds(15);
-
-    /** Per-event timeout for fire-and-forget Post* events; same cap, no blocking. */
-    private static final Duration DISPATCH_TIMEOUT = Duration.ofSeconds(15);
-
     private final PluginHookCatalog catalog;
+    private final HookTimeoutConfig timeouts;
 
     public PluginHookBridge(PluginHookCatalog catalog) {
+        this(catalog, HookTimeoutConfig.fromEnvironment());
+    }
+
+    public PluginHookBridge(PluginHookCatalog catalog, HookTimeoutConfig timeouts) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.timeouts = timeouts == null ? HookTimeoutConfig.defaults() : timeouts;
     }
 
     // ── Pre* events: block on decisions ─────────────────────────────────────
@@ -163,6 +166,18 @@ public final class PluginHookBridge {
         return event;
     }
 
+    @OnSubagentStart
+    public SubagentStartEvent onSubagentStart(SubagentStartEvent event) {
+        fireAndForget("SubagentStart", Map.of("event", String.valueOf(event)));
+        return event;
+    }
+
+    @OnSubagentStop
+    public SubagentStopEvent onSubagentStop(SubagentStopEvent event) {
+        fireAndForget("SubagentStop", Map.of("event", String.valueOf(event)));
+        return event;
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────
 
     /**
@@ -172,10 +187,14 @@ public final class PluginHookBridge {
      */
     private Decision collectDecisions(String eventName, Map<String, Object> payload) {
         Decision out = new Decision();
+        if (timeouts.disabled()) {
+            log.debug("Plugin hooks disabled via config; skipping '{}'", eventName);
+            return out;
+        }
         try {
             List<HookExecutor.HookResult> results =
                     catalog.dispatch(eventName, payload)
-                            .timeout(DECISION_TIMEOUT)
+                            .timeout(timeouts.preEventCollectDeadline())
                             .onErrorResume(
                                     err -> {
                                         log.warn(
@@ -202,9 +221,10 @@ public final class PluginHookBridge {
     }
 
     private void fireAndForget(String eventName, Map<String, Object> payload) {
+        if (timeouts.disabled()) return;
         try {
             catalog.dispatch(eventName, payload)
-                    .timeout(DISPATCH_TIMEOUT)
+                    .timeout(timeouts.postEventBudget())
                     .doOnError(
                             err ->
                                     log.warn(

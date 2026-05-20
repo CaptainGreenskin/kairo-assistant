@@ -142,10 +142,23 @@ public final class AssistantAgentFactory {
         toolDeps.put("pluginHookCatalog", pluginRuntime.hookCatalog());
 
         String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
+        // Append plugin-contributed output styles (if any) so the model picks up plugin-defined
+        // formatting / persona directives.
+        String pluginStyles = pluginRuntime.outputStyleCatalog().render();
+        if (!pluginStyles.isBlank()) {
+            systemPrompt = systemPrompt + "\n\n# Plugin Output Styles\n" + pluginStyles;
+        }
 
         // Bridge plugin hooks onto the agent's lifecycle so PreToolUse/PostToolUse/SessionStart/
         // SessionEnd/Stop fire automatically via PluginHookCatalog.
         PluginHookBridge hookBridge = new PluginHookBridge(pluginRuntime.hookCatalog());
+
+        // Re-enable plugins that were enabled in the previous session.
+        try {
+            pluginRuntime.enabledStore().rehydrate();
+        } catch (Exception e) {
+            log.warn("Failed to rehydrate persisted enabled plugins: {}", e.getMessage());
+        }
 
         Agent agent = buildAgent(config, modelProvider, config.modelName(),
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore, hookBridge);
@@ -162,6 +175,11 @@ public final class AssistantAgentFactory {
                 pluginRuntime.mcpPlugin(),
                 pluginRuntime.hookExecutor(),
                 pluginRuntime.hookCatalog(),
+                pluginRuntime.outputStyleCatalog(),
+                pluginRuntime.enabledStore(),
+                pluginRuntime.marketplaces(),
+                pluginRuntime.trustStore(),
+                pluginRuntime.auditLogger(),
                 config);
     }
 
@@ -282,8 +300,32 @@ public final class AssistantAgentFactory {
                 buildHookExecutor(modelProvider, config, toolRegistry, toolExecutor, mcpRegistrar);
         PluginHookCatalog hookCatalog = new PluginHookCatalog(pluginManager, hookExecutor);
 
+        // Output-style catalog: subscribes to plugin events; render() output appended to system
+        // prompt at agent build time.
+        OutputStyleCatalog outputStyleCatalog = new OutputStyleCatalog(pluginManager);
+
+        // Persisted enable state: rehydrate from disk so previously-enabled plugins come back
+        // automatically on next launch.
+        EnabledPluginsStore enabledStore =
+                new EnabledPluginsStore(pluginRoot.resolve("enabled.json"), pluginManager);
+
+        // Marketplace registry + trust store + audit logger: REPL plugin commands consume these.
+        MarketplaceStore marketplaces = new MarketplaceStore(pluginRoot.resolve("marketplaces.json"));
+        PluginTrustStore trustStore = new PluginTrustStore(pluginRoot.resolve("trust.json"));
+        PluginAuditLogger auditLogger =
+                new PluginAuditLogger(pluginRoot.resolve("audit.ndjson"));
+
         return new PluginRuntime(
-                pluginManager, mcpPlugin, subagentRegistry, hookExecutor, hookCatalog);
+                pluginManager,
+                mcpPlugin,
+                subagentRegistry,
+                hookExecutor,
+                hookCatalog,
+                outputStyleCatalog,
+                enabledStore,
+                marketplaces,
+                trustStore,
+                auditLogger);
     }
 
     /**
@@ -331,7 +373,12 @@ public final class AssistantAgentFactory {
             McpPlugin mcpPlugin,
             SubagentRegistry subagentRegistry,
             HookExecutor hookExecutor,
-            PluginHookCatalog hookCatalog) {}
+            PluginHookCatalog hookCatalog,
+            OutputStyleCatalog outputStyleCatalog,
+            EnabledPluginsStore enabledStore,
+            MarketplaceStore marketplaces,
+            PluginTrustStore trustStore,
+            PluginAuditLogger auditLogger) {}
 
     private static Agent buildAgent(AssistantConfig config,
                                     io.kairo.api.model.ModelProvider modelProvider,
