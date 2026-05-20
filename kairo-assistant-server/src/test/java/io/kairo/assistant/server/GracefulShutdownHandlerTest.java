@@ -6,7 +6,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.gateway.UnifiedGateway;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -98,7 +98,7 @@ class GracefulShutdownHandlerTest {
         return new AssistantSession(
                 agent, toolRegistry, new TestFixtures.StubToolExecutor(),
                 new InMemoryStore(), cron, skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
     }
 }

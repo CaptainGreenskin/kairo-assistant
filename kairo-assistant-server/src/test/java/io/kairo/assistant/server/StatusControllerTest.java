@@ -8,7 +8,7 @@ import io.kairo.api.tool.ToolDefinition;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.agent.ConversationStore;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.assistant.tool.ToolCallLogger;
 import io.kairo.core.memory.InMemoryStore;
@@ -42,7 +42,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry,
                 new TestFixtures.StubToolExecutor(), new InMemoryStore(),
                 new TestFixtures.StubCronScheduler(), skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         controller = new StatusController(session, new MetricsCollector(), new SessionManager(session));
@@ -209,7 +209,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry, loggerExecutor,
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         var loggedController = new StatusController(loggedSession, new MetricsCollector(), new SessionManager(loggedSession));
@@ -411,7 +411,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry, resultExecutor,
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
 
@@ -439,7 +439,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry, resultExecutor,
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
 
@@ -492,7 +492,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry,
                 new TestFixtures.StubToolExecutor(), new InMemoryStore(),
                 new TestFixtures.StubCronScheduler(), skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         var ctrl = new StatusController(session, metricsWithData, new SessionManager(session));
@@ -531,7 +531,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry,
                 new TestFixtures.StubToolExecutor(), new InMemoryStore(),
                 new TestFixtures.StubCronScheduler(), skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var ctrl = new StatusController(session, metricsWithData, new SessionManager(session));
         var result = ctrl.tokenAnalytics();
@@ -592,7 +592,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry, batchExecutor,
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var ctrl = new StatusController(sess, new MetricsCollector(), new SessionManager(sess));
 
@@ -618,7 +618,7 @@ class StatusControllerTest {
                 new TestFixtures.StubAgent(), toolRegistry,
                 new TestFixtures.StubToolExecutor(), new InMemoryStore(),
                 new TestFixtures.StubCronScheduler(), skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         return new StatusController(session, new MetricsCollector(), new SessionManager(session));
     }

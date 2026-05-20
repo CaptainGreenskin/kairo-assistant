@@ -2,11 +2,25 @@ package io.kairo.assistant.agent;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.ToolRegistry;
-import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
+import io.kairo.plugin.ComponentRegistrar;
+import io.kairo.plugin.DefaultPluginManager;
+import io.kairo.plugin.DefaultPluginRegistry;
+import io.kairo.plugin.KairoComponentRegistrar;
+import io.kairo.plugin.PluginEnvironment;
+import io.kairo.plugin.PluginLoader;
+import io.kairo.plugin.installer.PluginCacheManager;
+import io.kairo.plugin.source.GitHubSourceFetcher;
+import io.kairo.plugin.source.GitSubdirSourceFetcher;
+import io.kairo.plugin.source.GitUrlSourceFetcher;
+import io.kairo.plugin.source.HttpDownloader;
+import io.kairo.plugin.source.LocalPathSourceFetcher;
+import io.kairo.plugin.source.NpmSourceFetcher;
+import io.kairo.plugin.source.SourceFetcherRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.cron.CronFireCallback;
@@ -97,7 +111,7 @@ public final class AssistantAgentFactory {
 
         SkillRegistry skillRegistry = AssistantSkills.createRegistry();
 
-        PluginManager pluginManager = new PluginManager(toolRegistry, skillRegistry, dataPath);
+        PluginManager pluginManager = buildPluginManager(skillRegistry, dataPath);
 
         ConversationStore conversationStore = new ConversationStore(
                 dataPath.resolve("conversations"));
@@ -160,6 +174,44 @@ public final class AssistantAgentFactory {
 
         return buildAgent(modelConfig, modelProvider, modelName,
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+    }
+
+    /**
+     * Builds a {@link DefaultPluginManager} configured with all five remote source fetchers and a
+     * {@link KairoComponentRegistrar} that wires plugin contributions into this assistant's
+     * skill / MCP / bin chains.
+     *
+     * <p>Plugins live under {@code <dataDir>/plugins/} — cache at {@code cache/}, persistent
+     * per-plugin data at {@code data/}. The MCP bridge is left null in the registrar for now
+     * (kairo-assistant doesn't expose an MCP runtime yet at this layer); plugin-declared MCP
+     * servers will become active once the assistant ships its own MCP plugin.
+     */
+    private static PluginManager buildPluginManager(SkillRegistry skillRegistry, Path dataPath) {
+        Path pluginRoot = dataPath.resolve("plugins");
+        Path cacheRoot = pluginRoot.resolve("cache");
+        Path dataRoot = pluginRoot.resolve("data");
+        try {
+            Files.createDirectories(cacheRoot);
+            Files.createDirectories(dataRoot);
+        } catch (IOException e) {
+            log.warn("Failed to create plugin directories under {}: {}", pluginRoot, e.getMessage());
+        }
+
+        PluginCacheManager cache = new PluginCacheManager(cacheRoot);
+        HttpDownloader http = HttpDownloader.jdk();
+        SourceFetcherRegistry fetchers =
+                new SourceFetcherRegistry()
+                        .register(new LocalPathSourceFetcher())
+                        .register(new GitHubSourceFetcher(cache, http))
+                        .register(new GitUrlSourceFetcher(cache))
+                        .register(new GitSubdirSourceFetcher(cache))
+                        .register(new NpmSourceFetcher(cache, http));
+
+        ComponentRegistrar registrar =
+                new KairoComponentRegistrar(skillRegistry, null, new PluginEnvironment());
+
+        return new DefaultPluginManager(
+                new DefaultPluginRegistry(), new PluginLoader(), dataRoot, registrar, fetchers);
     }
 
     private static Agent buildAgent(AssistantConfig config,

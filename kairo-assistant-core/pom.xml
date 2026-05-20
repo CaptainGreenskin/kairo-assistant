@@ -30,6 +30,10 @@
             <artifactId>kairo-skill</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-plugin</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>

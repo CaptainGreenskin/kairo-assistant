@@ -12,7 +12,7 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -52,7 +52,7 @@ class ChatControllerTest {
                 agent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         var sessionManager = new SessionManager(session);
@@ -154,7 +154,7 @@ class ChatControllerTest {
                 failingAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 
@@ -181,7 +181,7 @@ class ChatControllerTest {
                 failingAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var errorController = new ChatController(session, TestFixtures.stubGateway(failingAgent), new SessionAwareDeltaRouter(), new SessionManager(session), new StreamingDeltaRouter());
 

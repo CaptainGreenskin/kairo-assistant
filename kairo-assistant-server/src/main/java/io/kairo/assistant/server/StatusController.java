@@ -51,7 +51,7 @@ public class StatusController {
         result.put("model", session.config().modelName());
         result.put("toolCount", session.toolRegistry().getAll().size());
         result.put("skillCount", session.skillRegistry().list().size());
-        result.put("pluginCount", session.pluginManager().plugins().size());
+        result.put("pluginCount", session.pluginManager().list().size());
         return result;
     }
 
@@ -130,7 +130,7 @@ public class StatusController {
         components.put("skills", Map.of("status", "ok",
                 "count", session.skillRegistry().list().size()));
         components.put("plugins", Map.of("status", "ok",
-                "count", session.pluginManager().plugins().size()));
+                "count", session.pluginManager().list().size()));
         result.put("components", components);
 
         result.put("metrics", Map.of(
@@ -461,7 +461,7 @@ public class StatusController {
 
         result.put("registeredTools", session.toolRegistry().getAll().size());
         result.put("registeredSkills", session.skillRegistry().list().size());
-        result.put("plugins", session.pluginManager().plugins().size());
+        result.put("plugins", session.pluginManager().list().size());
         result.put("provider", session.config().modelProvider());
         result.put("model", session.config().modelName());
 
@@ -646,12 +646,19 @@ public class StatusController {
     }
 
     @GetMapping("/plugins")
-    public List<Map<String, String>> plugins() {
-        return session.pluginManager().plugins().stream()
-                .map(p -> Map.of(
-                        "name", p.name(),
-                        "version", p.version(),
-                        "description", p.description()))
+    public List<Map<String, Object>> plugins() {
+        return session.pluginManager().list().stream()
+                .map(inst -> Map.<String, Object>of(
+                        "id", inst.id(),
+                        "name", inst.metadata().name(),
+                        "version", inst.metadata().version(),
+                        "description",
+                                inst.metadata().description() == null
+                                        ? ""
+                                        : inst.metadata().description(),
+                        "source", inst.source().type(),
+                        "scope", inst.scope().name(),
+                        "enabled", inst.enabled()))
                 .toList();
     }
 

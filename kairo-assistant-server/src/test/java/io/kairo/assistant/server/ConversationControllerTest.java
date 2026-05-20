@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.agent.ConversationStore;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -39,7 +39,7 @@ class ConversationControllerTest {
                 new TestFixtures.StubToolExecutor(),
                 new InMemoryStore(), new TestFixtures.StubCronScheduler(),
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, tempDir),
+                TestFixtures.stubPluginManager(),
                 config);
 
         controller = new ConversationController(session);

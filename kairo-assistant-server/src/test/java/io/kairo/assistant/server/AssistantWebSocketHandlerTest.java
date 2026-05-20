@@ -13,7 +13,7 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -71,7 +71,7 @@ class AssistantWebSocketHandlerTest {
                 agent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
 
         metrics = new MetricsCollector();
@@ -280,7 +280,7 @@ class AssistantWebSocketHandlerTest {
                 slowAgent, toolRegistry, new StubToolExecutor(),
                 new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                TestFixtures.stubPluginManager(),
                 config);
         var slowHandler = new AssistantWebSocketHandler(slowSession, TestFixtures.stubGateway(slowAgent),
                 new SessionAwareDeltaRouter(), new SessionManager(slowSession), new MetricsCollector(), new StreamingDeltaRouter());

@@ -14,8 +14,10 @@ import io.kairo.assistant.gateway.AgentSessionPool;
 import io.kairo.assistant.gateway.ModelRegistry;
 import io.kairo.assistant.gateway.ModelSwitchService;
 import io.kairo.assistant.gateway.UnifiedGateway;
-import io.kairo.assistant.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
+import io.kairo.plugin.DefaultPluginManager;
+import io.kairo.plugin.DefaultPluginRegistry;
+import io.kairo.plugin.PluginLoader;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -50,8 +52,15 @@ final class TestFixtures {
                 new StubAgent(), toolRegistry, toolExecutor,
                 new InMemoryStore(), cronScheduler,
                 skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp")),
+                stubPluginManager(),
                 defaultConfig());
+    }
+
+    static io.kairo.api.plugin.PluginManager stubPluginManager() {
+        return new DefaultPluginManager(
+                new DefaultPluginRegistry(),
+                new PluginLoader(),
+                Path.of(System.getProperty("java.io.tmpdir"), "kairo-test-plugins-server"));
     }
 
     static UnifiedGateway stubGateway() {

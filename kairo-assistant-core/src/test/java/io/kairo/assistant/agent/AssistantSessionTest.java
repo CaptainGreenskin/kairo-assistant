@@ -11,7 +11,10 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
+import io.kairo.plugin.DefaultPluginManager;
+import io.kairo.plugin.DefaultPluginRegistry;
+import io.kairo.plugin.PluginLoader;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.cron.CronScheduler;
 import io.kairo.core.memory.InMemoryStore;
@@ -55,7 +58,7 @@ class AssistantSessionTest {
                 new StubAgent(), new DefaultToolRegistry(),
                 new StubToolExecutor(), null, new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp")),
+                stubPluginManager(),
                 config);
         var deps = session.dependencies();
         assertThat(deps).doesNotContainKey("memoryStore");
@@ -85,7 +88,7 @@ class AssistantSessionTest {
                 agent, new DefaultToolRegistry(),
                 new StubToolExecutor(), new InMemoryStore(), cron,
                 AssistantSkills.createRegistry(),
-                new PluginManager(new DefaultToolRegistry(), AssistantSkills.createRegistry(), Path.of("/tmp")),
+                stubPluginManager(),
                 config);
 
         session.start();
@@ -97,11 +100,10 @@ class AssistantSessionTest {
     }
 
     @Test
-    void startLoadsPlugins() {
-        AtomicBoolean loaded = new AtomicBoolean(false);
+    void startWithEmptyPluginRegistryDoesNotThrow() {
         var toolRegistry = new DefaultToolRegistry();
         var skillRegistry = AssistantSkills.createRegistry();
-        var pm = new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp"));
+        var pm = stubPluginManager();
         var config = AssistantConfig.builder().apiKey("test").build();
 
         var session = new AssistantSession(
@@ -110,15 +112,15 @@ class AssistantSessionTest {
                 skillRegistry, pm, config);
 
         session.start();
-        // loadPlugins was called (no exception thrown)
-        assertThat(pm.plugins()).isEmpty();
+        // PluginManager has no auto-load step in v1.2 — list stays empty unless install() called.
+        assertThat(pm.list()).isEmpty();
     }
 
     @Test
-    void stopUnloadsPlugins() {
+    void stopShutsDownCleanlyWithEmptyPluginRegistry() {
         var toolRegistry = new DefaultToolRegistry();
         var skillRegistry = AssistantSkills.createRegistry();
-        var pm = new PluginManager(toolRegistry, skillRegistry, Path.of("/tmp"));
+        var pm = stubPluginManager();
         var config = AssistantConfig.builder().apiKey("test").build();
 
         var session = new AssistantSession(
@@ -128,7 +130,7 @@ class AssistantSessionTest {
 
         session.start();
         session.stop();
-        assertThat(pm.plugins()).isEmpty();
+        assertThat(pm.list()).isEmpty();
     }
 
     @Test
@@ -188,8 +190,15 @@ class AssistantSessionTest {
                 new StubAgent(), toolRegistry,
                 new StubToolExecutor(), new InMemoryStore(), new StubCronScheduler(),
                 AssistantSkills.createRegistry(),
-                new PluginManager(toolRegistry, AssistantSkills.createRegistry(), Path.of("/tmp")),
+                stubPluginManager(),
                 config);
+    }
+
+    private static PluginManager stubPluginManager() {
+        return new DefaultPluginManager(
+                new DefaultPluginRegistry(),
+                new PluginLoader(),
+                Path.of(System.getProperty("java.io.tmpdir"), "kairo-test-plugins"));
     }
 
     private static class StubAgent implements Agent {

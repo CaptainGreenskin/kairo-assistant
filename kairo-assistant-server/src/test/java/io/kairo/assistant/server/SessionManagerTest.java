@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.plugin.PluginManager;
+import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -32,7 +32,7 @@ class SessionManagerTest {
                 new TestFixtures.StubAgent(), toolRegistry,
                 new TestFixtures.StubToolExecutor(), new InMemoryStore(),
                 new TestFixtures.StubCronScheduler(), skillRegistry,
-                new PluginManager(toolRegistry, skillRegistry, tempDir),
+                TestFixtures.stubPluginManager(),
                 config);
         manager = new SessionManager(session);
     }

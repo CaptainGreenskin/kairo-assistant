@@ -90,7 +90,7 @@ public class ReplSession {
             Completer slashCompleter = new StringsCompleter(
                     "/help", "/status", "/tools", "/skills", "/config", "/model",
                     "/history", "/clear", "/verbose", "/permissions", "/channels",
-                    "/plugins", "/version", "/interrupt", "/sessions", "/resume",
+                    "/plugins", "/plugin", "/version", "/interrupt", "/sessions", "/resume",
                     "/search", "/export", "/delete", "/render", "/system",
                     "/retry", "/cost", "/notify", "/alias", "/multiline",
                     "/context", "/undo", "/run", "/snippet", "/watch",
@@ -262,6 +262,7 @@ public class ReplSession {
             case "/permissions" -> printPermissions();
             case "/channels" -> printChannels();
             case "/plugins" -> printPlugins();
+            case "/plugin" -> handlePluginCommand(arg);
             case "/version" -> printVersion();
             case "/interrupt" -> doInterrupt();
             case "/sessions" -> printSessions();
@@ -463,17 +464,221 @@ public class ReplSession {
         if (session.pluginManager() == null) {
             w.println("  Plugin system not initialized");
         } else {
-            var plugins = session.pluginManager().plugins();
-            w.printf("=== Plugins (%d) ===%n", plugins.size());
-            for (var plugin : plugins) {
-                w.printf("  %-20s %s%n", plugin.name(), plugin.version());
+            var installations = session.pluginManager().list();
+            w.printf("=== Plugins (%d) ===%n", installations.size());
+            for (var inst : installations) {
+                String enabledMark = inst.enabled() ? "*" : " ";
+                w.printf(
+                        "  [%s] %-25s %s  (%s, %s)%n",
+                        enabledMark,
+                        inst.metadata().name(),
+                        inst.metadata().version(),
+                        inst.source().type(),
+                        inst.scope());
             }
-            if (plugins.isEmpty()) {
-                w.println("  (no plugins loaded)");
+            if (installations.isEmpty()) {
+                w.println("  (no plugins installed — try /plugin install <source>)");
             }
         }
         w.println();
         w.flush();
+    }
+
+    private void handlePluginCommand(String arg) {
+        var w = terminal.writer();
+        if (session.pluginManager() == null) {
+            w.println("  Plugin system not initialized");
+            w.flush();
+            return;
+        }
+        if (arg == null || arg.isBlank()) {
+            printPluginUsage();
+            return;
+        }
+        String[] parts = arg.trim().split("\\s+", 2);
+        String sub = parts[0];
+        String rest = parts.length > 1 ? parts[1] : "";
+        switch (sub) {
+            case "list" -> printPlugins();
+            case "install" -> pluginInstall(rest);
+            case "enable" -> pluginEnable(rest);
+            case "disable" -> pluginDisable(rest);
+            case "uninstall", "remove" -> pluginUninstall(rest);
+            case "update" -> pluginUpdate(rest);
+            default -> {
+                w.println("  Unknown subcommand: " + sub);
+                printPluginUsage();
+            }
+        }
+    }
+
+    private void printPluginUsage() {
+        var w = terminal.writer();
+        w.println();
+        w.println("Plugin commands:");
+        w.println("  /plugin list                       List installed plugins");
+        w.println("  /plugin install <source>           Install (path / github:owner/repo / git+url / npm:pkg@ver)");
+        w.println("  /plugin enable <id-prefix>         Enable a plugin");
+        w.println("  /plugin disable <id-prefix>        Disable a plugin (keeps install)");
+        w.println("  /plugin uninstall <id-prefix>      Uninstall a plugin");
+        w.println("  /plugin update <id-prefix>         Re-load manifest from disk");
+        w.println();
+        w.flush();
+    }
+
+    private void pluginInstall(String spec) {
+        var w = terminal.writer();
+        if (spec == null || spec.isBlank()) {
+            w.println("  Usage: /plugin install <source>");
+            w.flush();
+            return;
+        }
+        io.kairo.api.plugin.PluginSource source;
+        try {
+            source = parsePluginSourceSpec(spec);
+        } catch (IllegalArgumentException e) {
+            w.println("  " + e.getMessage());
+            w.flush();
+            return;
+        }
+        try {
+            var inst = session.pluginManager()
+                    .install(source, io.kairo.api.plugin.PluginScope.PROJECT)
+                    .block(java.time.Duration.ofMinutes(2));
+            w.printf(
+                    "  Installed '%s' v%s (id=%s, source=%s)%n",
+                    inst.metadata().name(), inst.metadata().version(), inst.id(), inst.source().type());
+        } catch (Exception e) {
+            w.println("  Install failed: " + rootCauseMessage(e));
+        }
+        w.flush();
+    }
+
+    private void pluginEnable(String idPrefix) {
+        applyToResolvedPlugin(idPrefix, "enable", id -> session.pluginManager().enable(id).block(java.time.Duration.ofMinutes(2)));
+    }
+
+    private void pluginDisable(String idPrefix) {
+        applyToResolvedPlugin(idPrefix, "disable", id -> session.pluginManager().disable(id).block(java.time.Duration.ofSeconds(30)));
+    }
+
+    private void pluginUninstall(String idPrefix) {
+        applyToResolvedPlugin(idPrefix, "uninstall", id -> session.pluginManager().uninstall(id).block(java.time.Duration.ofSeconds(30)));
+    }
+
+    private void pluginUpdate(String idPrefix) {
+        applyToResolvedPlugin(idPrefix, "update", id -> session.pluginManager().update(id).block(java.time.Duration.ofMinutes(2)));
+    }
+
+    private void applyToResolvedPlugin(String idPrefix, String label, java.util.function.Consumer<String> action) {
+        var w = terminal.writer();
+        if (idPrefix == null || idPrefix.isBlank()) {
+            w.println("  Usage: /plugin " + label + " <id-prefix>");
+            w.flush();
+            return;
+        }
+        String id = resolvePluginId(idPrefix);
+        if (id == null) {
+            w.println("  No plugin matches: " + idPrefix);
+            w.flush();
+            return;
+        }
+        try {
+            action.accept(id);
+            w.printf("  %s: %s%n", label.substring(0, 1).toUpperCase() + label.substring(1) + "d", id);
+        } catch (Exception e) {
+            w.println("  " + label + " failed: " + rootCauseMessage(e));
+        }
+        w.flush();
+    }
+
+    /** Resolves a user-supplied prefix to a unique plugin id, or null if 0/multiple match. */
+    private String resolvePluginId(String prefix) {
+        var matches = session.pluginManager().list().stream()
+                .filter(p -> p.id().contains(prefix) || p.metadata().name().equals(prefix))
+                .toList();
+        if (matches.size() == 1) return matches.get(0).id();
+        return null;
+    }
+
+    /**
+     * Parses CLI shorthand into a PluginSource:
+     * <ul>
+     *   <li>{@code github:owner/repo} or {@code github:owner/repo@ref}
+     *   <li>{@code npm:pkg@version} or {@code npm:@scope/pkg@version}
+     *   <li>{@code git+<url>} or {@code git+<url>@ref}
+     *   <li>{@code git-subdir+<url>@<ref>:<subdir>}
+     *   <li>anything else → LocalPath (resolved against cwd if relative)
+     * </ul>
+     */
+    static io.kairo.api.plugin.PluginSource parsePluginSourceSpec(String spec) {
+        if (spec.startsWith("github:")) {
+            String body = spec.substring("github:".length());
+            int at = body.lastIndexOf('@');
+            String repo = at < 0 ? body : body.substring(0, at);
+            String ref = at < 0 ? null : body.substring(at + 1);
+            return new io.kairo.api.plugin.PluginSource.GitHub(repo, ref, null);
+        }
+        if (spec.startsWith("npm:")) {
+            String body = spec.substring("npm:".length());
+            int at = body.lastIndexOf('@');
+            // For scoped packages '@scope/pkg@version', the LAST @ is the version separator only
+            // when it's not the leading @ of the scope.
+            if (at <= 0 || (at == 0 && body.startsWith("@"))) {
+                throw new IllegalArgumentException("npm spec must include @version: npm:<pkg>@<version>");
+            }
+            String pkg = body.substring(0, at);
+            String version = body.substring(at + 1);
+            return new io.kairo.api.plugin.PluginSource.Npm(pkg, version, null);
+        }
+        if (spec.startsWith("git-subdir+")) {
+            String body = spec.substring("git-subdir+".length());
+            // Find the LAST ':' whose next char is NOT '/' — distinguishes the subdir
+            // separator from the '://' inside an https/git URL.
+            int colon = -1;
+            for (int i = body.length() - 1; i >= 0; i--) {
+                if (body.charAt(i) == ':'
+                        && (i + 1 >= body.length() || body.charAt(i + 1) != '/')) {
+                    colon = i;
+                    break;
+                }
+            }
+            if (colon < 0) {
+                throw new IllegalArgumentException("git-subdir spec needs ':<subdir>' suffix");
+            }
+            String urlAndRef = body.substring(0, colon);
+            String subdir = body.substring(colon + 1);
+            int at = urlAndRef.lastIndexOf('@');
+            String url = at < 0 ? urlAndRef : urlAndRef.substring(0, at);
+            String ref = at < 0 ? null : urlAndRef.substring(at + 1);
+            return new io.kairo.api.plugin.PluginSource.GitSubdir(url, ref, subdir);
+        }
+        if (spec.startsWith("git+")) {
+            String body = spec.substring("git+".length());
+            int at = body.lastIndexOf('@');
+            // For URLs like https://x.com/repo.git the @ rarely appears; if it does after the
+            // schema separator, treat as ref.
+            String url;
+            String ref;
+            if (at > 5 /* skip 'https' length */) {
+                url = body.substring(0, at);
+                ref = body.substring(at + 1);
+            } else {
+                url = body;
+                ref = null;
+            }
+            return new io.kairo.api.plugin.PluginSource.GitUrl(url, ref);
+        }
+        // Fallback: local path.
+        Path p = Path.of(spec);
+        if (!p.isAbsolute()) p = Path.of("").toAbsolutePath().resolve(spec);
+        return new io.kairo.api.plugin.PluginSource.LocalPath(p);
+    }
+
+    private static String rootCauseMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
     }
 
     private void printVersion() {
@@ -2975,7 +3180,8 @@ public class ReplSession {
         w.println("  /version         Show version");
         w.println("  /permissions     Show permission settings");
         w.println("  /channels        List configured channels");
-        w.println("  /plugins         List loaded plugins");
+        w.println("  /plugins         List installed plugins (alias of /plugin list)");
+        w.println("  /plugin <cmd>    Plugin lifecycle: install/list/enable/disable/uninstall/update");
         w.println("  /system [cmd]    Manage custom instructions");
         w.println("  /profile [cmd]   Switch user profiles");
         w.println("  /env             Show runtime environment");
