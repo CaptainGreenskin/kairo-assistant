@@ -29,6 +29,8 @@ export const translations = {
     "tab.replay": "Replay",
     "tab.trace": "Trace",
     "tab.toolPlayground": "Playground",
+    "tab.observability": "Observability",
+    "tab.board": "Board",
 
     "nav.theme": "Theme",
     "nav.lang": "Language",
@@ -72,6 +74,8 @@ export const translations = {
     "tab.replay": "重放",
     "tab.trace": "追踪",
     "tab.toolPlayground": "工具沙箱",
+    "tab.observability": "可观测",
+    "tab.board": "看板",
 
     "nav.theme": "主题",
     "nav.lang": "语言",

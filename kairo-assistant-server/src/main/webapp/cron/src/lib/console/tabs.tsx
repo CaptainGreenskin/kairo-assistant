@@ -19,6 +19,8 @@ import { ReplayPage } from "../../pages/ReplayPage";
 import { TracePage } from "../../pages/TracePage";
 import { ToolPlaygroundPage } from "../../pages/ToolPlaygroundPage";
 import { SystemPromptPage } from "../../pages/SystemPromptPage";
+import { ObservabilityPage } from "../../pages/ObservabilityPage";
+import { TaskBoardPage } from "../../pages/TaskBoardPage";
 
 /**
  * Central registry of console tabs. Adding a tab is one line: register here +
@@ -56,6 +58,12 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.tasks",
     path: "/",
     component: TaskListPage,
+  },
+  {
+    id: "board",
+    labelKey: "tab.board",
+    path: "/board",
+    component: TaskBoardPage,
   },
   {
     id: "create",
@@ -134,6 +142,12 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.analytics",
     path: "/analytics",
     component: AnalyticsPage,
+  },
+  {
+    id: "observability",
+    labelKey: "tab.observability",
+    path: "/observability",
+    component: ObservabilityPage,
   },
   {
     id: "health",

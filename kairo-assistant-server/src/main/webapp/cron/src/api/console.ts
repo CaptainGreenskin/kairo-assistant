@@ -274,6 +274,26 @@ export const systemPromptApi = {
 };
 
 /** ----- Plugin mutations ----- */
+/** ----- Observability ----- */
+export interface LatencyAnalytics {
+  percentiles?: Record<string, number>;
+  totalAgentCalls?: number;
+  totalDurationMs?: number;
+  avgDurationMs?: number;
+}
+export interface EndpointAnalytics {
+  endpoints?: Record<string, number>;
+}
+export const observabilityApi = {
+  metricsText: () =>
+    fetch("/api/metrics").then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.text();
+    }),
+  latency: () => api.get<LatencyAnalytics>("/api/analytics/latency"),
+  endpoints: () => api.get<EndpointAnalytics>("/api/analytics/endpoints"),
+};
+
 export const pluginActionsApi = {
   enable: (id: string) =>
     api.post<{ status?: string; error?: string }>(
