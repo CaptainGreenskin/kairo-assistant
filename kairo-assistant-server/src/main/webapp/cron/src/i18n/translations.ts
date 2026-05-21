@@ -25,6 +25,7 @@ export const translations = {
     "tab.health": "Health",
     "tab.system": "System",
     "tab.chat": "Chat",
+    "tab.replay": "Replay",
 
     "nav.theme": "Theme",
     "nav.lang": "Language",
@@ -64,6 +65,7 @@ export const translations = {
     "tab.health": "健康",
     "tab.system": "系统",
     "tab.chat": "聊天",
+    "tab.replay": "重放",
 
     "nav.theme": "主题",
     "nav.lang": "语言",

@@ -129,8 +129,29 @@ export interface ChannelInfo {
   status?: string;
   [k: string]: unknown;
 }
+export interface ChannelRecentMessage {
+  direction: "in" | "out";
+  destination: string;
+  content: string;
+  timestamp: string;
+  success: boolean;
+}
+export interface ChannelRecentResponse {
+  channelId: string;
+  total: number;
+  messages: ChannelRecentMessage[];
+}
 export const channelsApi = {
   list: () => api.get<unknown>("/api/channels"),
+  recent: (channelId: string, limit = 50) =>
+    api.get<ChannelRecentResponse>(
+      `/api/channels/${encodeURIComponent(channelId)}/recent?limit=${limit}`,
+    ),
+  send: (channelId: string, destination: string, content: string) =>
+    api.post<{ sent?: boolean; error?: string }>(
+      `/api/channels/${encodeURIComponent(channelId)}/send`,
+      { destination, content },
+    ),
 };
 
 /** ----- Tools ----- */
@@ -193,6 +214,22 @@ export interface AgentState {
 export const systemApi = {
   info: () => api.get<SystemInfo>("/api/system"),
   agent: () => api.get<AgentState>("/api/agent/state"),
+};
+
+/** ----- Replay (redacted session exports) ----- */
+export interface ReplayPreview {
+  sessionId: string;
+  title?: string;
+  entries: Array<Record<string, unknown>>;
+  generatedAt: string;
+  note?: string;
+}
+export const replayApi = {
+  preview: (sessionId: string) =>
+    api.get<ReplayPreview>(`/api/replay/${encodeURIComponent(sessionId)}/preview`),
+  /** Download URL for a given format — wire to an `<a download>` */
+  downloadUrl: (sessionId: string, format: "json" | "markdown" | "html") =>
+    `/api/replay/${encodeURIComponent(sessionId)}?format=${format}`,
 };
 
 /** ----- Conversations ----- */

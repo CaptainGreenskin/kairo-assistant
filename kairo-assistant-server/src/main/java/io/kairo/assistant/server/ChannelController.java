@@ -7,6 +7,10 @@ import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.channel.ChannelGateway;
 import io.kairo.assistant.channel.DingTalkChannel;
 import io.kairo.assistant.channel.FeishuChannel;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -26,9 +31,23 @@ public class ChannelController {
 
     private final AssistantSession session;
     private final Map<String, ChannelGateway> gateways = new ConcurrentHashMap<>();
+    /** Per-channel ring buffer of the most recent inbound + outbound messages (max 50). */
+    private final Map<String, Deque<RecentMessage>> recent = new ConcurrentHashMap<>();
+    private static final int RECENT_LIMIT = 50;
 
     public ChannelController(AssistantSession session) {
         this.session = session;
+    }
+
+    private record RecentMessage(
+            String direction, String destination, String content, long timestampMillis, boolean success) {}
+
+    private synchronized void recordRecent(
+            String channelId, String direction, String destination, String content, boolean success) {
+        Deque<RecentMessage> dq =
+                recent.computeIfAbsent(channelId, k -> new ArrayDeque<>(RECENT_LIMIT + 1));
+        dq.addFirst(new RecentMessage(direction, destination, content, System.currentTimeMillis(), success));
+        while (dq.size() > RECENT_LIMIT) dq.removeLast();
     }
 
     @GetMapping
@@ -69,7 +88,10 @@ public class ChannelController {
 
         DingTalkChannel channel = findOrCreateDingTalk();
         return channel.injectInbound(senderId, senderName, text)
-                .map(ack -> Map.<String, Object>of("success", ack.success()));
+                .map(ack -> {
+                    recordRecent("dingtalk", "in", senderName + ":" + senderId, text, ack.success());
+                    return Map.<String, Object>of("success", ack.success());
+                });
     }
 
     @PostMapping(value = "/feishu/webhook", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -82,8 +104,12 @@ public class ChannelController {
         if (senderId == null) senderId = "unknown";
 
         FeishuChannel channel = findOrCreateFeishu();
+        String senderTag = senderId;
         return channel.injectInbound(senderId, "user", text)
-                .map(ack -> Map.<String, Object>of("success", ack.success()));
+                .map(ack -> {
+                    recordRecent("feishu", "in", "user:" + senderTag, text, ack.success());
+                    return Map.<String, Object>of("success", ack.success());
+                });
     }
 
     @PostMapping(value = "/{channelId}/send", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -106,8 +132,44 @@ public class ChannelController {
         }
 
         return gateway.sendOutbound(message)
-                .map(ack -> Map.<String, Object>of("sent", ack.success()))
-                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())));
+                .map(ack -> {
+                    recordRecent(channelId, "out", dest, content, ack.success());
+                    return Map.<String, Object>of("sent", ack.success());
+                })
+                .onErrorResume(e -> {
+                    recordRecent(channelId, "out", dest, content, false);
+                    return Mono.just(Map.of("error", (Object) e.getMessage()));
+                });
+    }
+
+    /**
+     * Recent inbound + outbound messages for a channel. Backed by an in-memory ring buffer,
+     * so values reset on server restart. Useful for debugging integrations without tailing logs.
+     */
+    @GetMapping(value = "/{channelId}/recent", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> recentMessages(
+            @PathVariable String channelId,
+            @RequestParam(defaultValue = "50") int limit) {
+        Deque<RecentMessage> dq = recent.get(channelId);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (dq != null) {
+            int i = 0;
+            for (RecentMessage m : dq) {
+                if (i++ >= limit) break;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("direction", m.direction());
+                row.put("destination", m.destination());
+                row.put("content", m.content());
+                row.put("timestamp", Instant.ofEpochMilli(m.timestampMillis()).toString());
+                row.put("success", m.success());
+                rows.add(row);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("channelId", channelId);
+        result.put("total", rows.size());
+        result.put("messages", rows);
+        return result;
     }
 
     @SuppressWarnings("unchecked")

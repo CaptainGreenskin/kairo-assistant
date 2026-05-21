@@ -15,6 +15,7 @@ import { ChannelsPage } from "../../pages/ChannelsPage";
 import { ChatPage } from "../../pages/ChatPage";
 import { SystemPage } from "../../pages/SystemPage";
 import { ToolHistoryPage } from "../../pages/ToolHistoryPage";
+import { ReplayPage } from "../../pages/ReplayPage";
 
 /**
  * Central registry of console tabs. Adding a tab is one line: register here +
@@ -70,6 +71,12 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.sessions",
     path: "/sessions",
     component: SessionsPage,
+  },
+  {
+    id: "replay",
+    labelKey: "tab.replay",
+    path: "/replay",
+    component: ReplayPage,
   },
   {
     id: "memory",

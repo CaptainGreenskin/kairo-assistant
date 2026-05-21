@@ -28,15 +28,18 @@ export function SystemPage() {
       <section className="mb-6">
         <h3 className="text-xs uppercase tracking-wider text-text-dim mb-3">Agent</h3>
         {a && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Kv label="Name" value={a.agentName ?? "—"} />
-            <Kv
-              label="State"
-              value={a.state ?? "—"}
-              tone={a.state === "IDLE" ? "success" : a.state === "RUNNING" ? "warn" : undefined}
-            />
-            <Kv label="ID" value={a.agentId ?? "—"} mono />
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+              <Kv label="Name" value={a.agentName ?? "—"} />
+              <Kv
+                label="State"
+                value={a.state ?? "—"}
+                tone={a.state === "IDLE" ? "success" : a.state === "RUNNING" ? "warn" : undefined}
+              />
+              <Kv label="ID" value={a.agentId ?? "—"} mono />
+            </div>
+            <AgentStateMachine current={a.state ?? "UNKNOWN"} />
+          </>
         )}
       </section>
 
@@ -73,6 +76,74 @@ export function SystemPage() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * Visual representation of the agent state machine. States are arranged in
+ * lifecycle order; the currently-active state pulses + glows.
+ *
+ * State names follow io.kairo.api.agent.AgentState — keep in sync if you
+ * add new states server-side (the diagram falls back to "unknown" for
+ * states it doesn't recognise, so it never crashes).
+ */
+const STATES: Array<{ id: string; label: string; description: string }> = [
+  { id: "IDLE", label: "IDLE", description: "Waiting for input" },
+  { id: "REASONING", label: "REASONING", description: "Thinking about next step" },
+  { id: "ACTING", label: "ACTING", description: "Invoking a tool" },
+  { id: "WAITING", label: "WAITING", description: "Waiting on model / tool I/O" },
+  { id: "DONE", label: "DONE", description: "Iteration complete" },
+  { id: "ERROR", label: "ERROR", description: "Loop aborted" },
+];
+
+function AgentStateMachine({ current }: { current: string }) {
+  const known = STATES.some((s) => s.id === current);
+  return (
+    <div className="border border-border rounded p-4 bg-surface">
+      <div className="text-[10px] uppercase tracking-wider text-text-dim mb-3">
+        Lifecycle
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {STATES.map((s, i) => {
+          const active = s.id === current;
+          const isError = s.id === "ERROR";
+          return (
+            <div key={s.id} className="flex items-center gap-2">
+              <div
+                title={s.description}
+                className={[
+                  "px-3 py-1.5 rounded-md text-xs font-semibold border transition-all",
+                  active
+                    ? isError
+                      ? "bg-red-500/30 text-red-200 border-red-500/60 animate-pulse"
+                      : "bg-accent/30 text-accent border-accent/60 animate-pulse shadow-lg shadow-accent/20"
+                    : "bg-bg text-text-dim border-border",
+                ].join(" ")}
+              >
+                {s.label}
+              </div>
+              {i < STATES.length - 1 && i < STATES.length - 2 ? (
+                <span className="text-text-dim text-xs">→</span>
+              ) : i === STATES.length - 2 ? (
+                <span className="text-text-dim text-xs">⇄</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {!known && (
+        <div className="text-[10px] text-warn mt-3">
+          Current state <code className="font-mono">{current}</code> is not in
+          the known lifecycle — the server may have added a new AgentState
+          enum value.
+        </div>
+      )}
+      <div className="text-[10px] text-text-dim mt-3 leading-snug">
+        Active state glows. ERROR is a sink — only reachable from REASONING/ACTING
+        when the loop detector or circuit breaker trips. DONE returns to IDLE on
+        the next user input.
+      </div>
     </div>
   );
 }
