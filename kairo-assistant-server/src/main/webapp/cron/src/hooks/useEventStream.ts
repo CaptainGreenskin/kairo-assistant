@@ -24,7 +24,13 @@ interface KairoSseEvent {
   attributes: Record<string, unknown>;
 }
 
-export type SseStatus = "connecting" | "live" | "offline";
+/**
+ * `null` while the SSE handshake hasn't produced a verdict yet — the badge
+ * stays hidden during the initial ~tens of ms instead of flashing
+ * "connecting" → "live" on every page load. Once we've heard from the
+ * server (open or error) we never go back to null.
+ */
+export type SseStatus = "connecting" | "live" | "offline" | null;
 
 const STREAM_URL = "/api/events/stream?domain=cron&domain=evolution";
 
@@ -33,7 +39,7 @@ const INVALIDATE_MAP: Record<string, ReadonlyArray<readonly unknown[]>> = {
   evolution: [["evolution", "skills"]],
 };
 
-const SseStatusContext = createContext<SseStatus>("connecting");
+const SseStatusContext = createContext<SseStatus>(null);
 
 export const useSseStatus = () => useContext(SseStatusContext);
 
@@ -44,11 +50,10 @@ export const useSseStatus = () => useContext(SseStatusContext);
  */
 export function EventStreamProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const [status, setStatus] = useState<SseStatus>("connecting");
+  const [status, setStatus] = useState<SseStatus>(null);
 
   useEffect(() => {
     const source = new EventSource(STREAM_URL);
-    setStatus("connecting");
 
     source.onopen = () => setStatus("live");
     source.onerror = () => {

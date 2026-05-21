@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { TABS } from "../lib/console/tabs";
+import { CATEGORY_LABELS, TABS, tabsByCategory, type ConsoleTab } from "../lib/console/tabs";
 import { THEMES, useTheme } from "../hooks/useTheme";
 import { useI18n } from "../i18n";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
@@ -20,6 +20,11 @@ export function ConsoleShell({ children }: Props) {
   const boot = useBootScreen();
   const loc = useLocation();
   const visible = TABS.filter((tab) => !tab.hidden);
+  const grouped = tabsByCategory();
+  const digitFor = (id: string) => {
+    const idx = visible.findIndex((t) => t.id === id);
+    return idx >= 0 && idx < 9 ? String(idx + 1) : null;
+  };
 
   useKeyboardNav(() => setHelpOpen(true));
 
@@ -38,27 +43,17 @@ export function ConsoleShell({ children }: Props) {
           <span className="text-text-dim font-normal hidden md:inline"> · {t("app.subtitle")}</span>
         </Link>
 
-        <nav className="flex gap-0.5 flex-1 min-w-0 overflow-x-auto text-sm">
-          {visible.map((tab, i) => {
-            const active = isActive(tab.path);
-            const digit = i < 9 ? String(i + 1) : null;
-            return (
-              <Link
-                key={tab.id}
-                to={tab.path}
-                className={[
-                  "px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0",
-                  active
-                    ? "bg-primary text-text"
-                    : "text-text-dim hover:text-text hover:bg-primary/40",
-                ].join(" ")}
-                data-active={active}
-              >
-                {digit && <span className="opacity-50 mr-1.5 text-xs">{digit}</span>}
-                {t(tab.labelKey)}
-              </Link>
-            );
-          })}
+        <nav className="flex gap-1 flex-1 min-w-0 text-sm">
+          {grouped.map(({ category, tabs }) => (
+            <CategoryDropdown
+              key={category}
+              label={t(CATEGORY_LABELS[category])}
+              tabs={tabs}
+              isActive={isActive}
+              digitFor={digitFor}
+              t={t}
+            />
+          ))}
         </nav>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -79,12 +74,17 @@ export function ConsoleShell({ children }: Props) {
           >
             ?
           </button>
-          <a
-            href="/"
+          {/*
+            Was a hard <a href="/"> back to the assistant home — but the
+            assistant server has no SPA at "/", so it 404'd. The chat tab
+            is the closest equivalent landing inside this SPA.
+          */}
+          <Link
+            to="/chat"
             className="ml-2 text-text-dim hover:text-text text-xs underline-offset-2 hover:underline"
           >
             {t("app.backToAssistant")}
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -116,21 +116,108 @@ export function ConsoleShell({ children }: Props) {
   );
 }
 
+/**
+ * Category bucket in the top nav. Click the header → opens a dropdown of the
+ * tabs in that category. Header is highlighted when any of its tabs is active.
+ * Dropdown closes on outside-click or Escape.
+ */
+function CategoryDropdown({
+  label,
+  tabs,
+  isActive,
+  digitFor,
+  t,
+}: {
+  label: string;
+  tabs: ConsoleTab[];
+  isActive: (path: string) => boolean;
+  digitFor: (id: string) => string | null;
+  t: (key: import("../i18n").TranslationKey) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const anyActive = tabs.some((tab) => isActive(tab.path));
+
+  useEffect(() => {
+    if (!open) return;
+    const click = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", click);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", click);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          "px-3 py-1.5 rounded-md transition-colors text-sm",
+          anyActive
+            ? "bg-primary text-text"
+            : "text-text-dim hover:text-text hover:bg-primary/40",
+        ].join(" ")}
+        aria-expanded={open}
+      >
+        {label}
+        <span className="ml-1.5 text-xs opacity-50">▾</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-surface border border-border rounded-md shadow-lg min-w-[180px] py-1 z-50">
+          {tabs.map((tab) => {
+            const active = isActive(tab.path);
+            const digit = digitFor(tab.id);
+            return (
+              <Link
+                key={tab.id}
+                to={tab.path}
+                onClick={() => setOpen(false)}
+                className={[
+                  "flex items-center justify-between px-3 py-1.5 text-sm whitespace-nowrap",
+                  active
+                    ? "bg-accent/20 text-accent"
+                    : "text-text-dim hover:text-text hover:bg-primary/40",
+                ].join(" ")}
+              >
+                <span>{t(tab.labelKey)}</span>
+                {digit && (
+                  <kbd className="ml-3 font-mono text-[10px] opacity-50">{digit}</kbd>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SseStatusBadge() {
   const status = useSseStatus();
   const { t } = useI18n();
+  // Hide entirely until the EventSource has emitted its first state — avoids
+  // a one-frame "connecting" flash every time the user navigates.
+  if (status === null) return null;
   const tone =
     status === "live"
       ? "bg-success/20 text-success"
       : status === "connecting"
-      ? "bg-warn/20 text-warn"
-      : "bg-red-500/20 text-red-300";
+        ? "bg-warn/20 text-warn"
+        : "bg-red-500/20 text-red-300";
   const label =
     status === "live"
       ? `● ${t("status.live")}`
       : status === "connecting"
-      ? t("status.connecting")
-      : t("status.offline");
+        ? t("status.connecting")
+        : t("status.offline");
   return <span className={`text-[10px] px-1.5 py-0.5 rounded ${tone}`}>{label}</span>;
 }
 

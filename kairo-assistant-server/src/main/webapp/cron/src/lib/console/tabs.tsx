@@ -29,6 +29,20 @@ import { TaskBoardPage } from "../../pages/TaskBoardPage";
  * derived from the index of the first 9 entries (1-9 keys) plus the optional
  * `digit` override.
  */
+/**
+ * Top-nav grouping. Tabs are presented as four category buckets so the nav
+ * doesn't overflow on narrow viewports; the order here is also the visual
+ * order of the buckets in the top bar.
+ */
+export type TabCategory = "run" | "history" | "catalog" | "operate";
+
+export const CATEGORY_LABELS: Record<TabCategory, TranslationKey> = {
+  run: "cat.run",
+  history: "cat.history",
+  catalog: "cat.catalog",
+  operate: "cat.operate",
+};
+
 export interface ConsoleTab {
   id: string;
   labelKey: TranslationKey;
@@ -38,135 +52,39 @@ export interface ConsoleTab {
   digit?: string;
   /** Hide from the top nav (route still exists). */
   hidden?: boolean;
+  /** Which top-nav bucket the tab lives in. Defaults to "run". */
+  category?: TabCategory;
 }
 
 export const TABS: ConsoleTab[] = [
-  {
-    id: "dashboard",
-    labelKey: "tab.dashboard",
-    path: "/dashboard",
-    component: DashboardPage,
-  },
-  {
-    id: "chat",
-    labelKey: "tab.chat",
-    path: "/chat",
-    component: ChatPage,
-  },
-  {
-    id: "tasks",
-    labelKey: "tab.tasks",
-    path: "/",
-    component: TaskListPage,
-  },
-  {
-    id: "board",
-    labelKey: "tab.board",
-    path: "/board",
-    component: TaskBoardPage,
-  },
-  {
-    id: "create",
-    labelKey: "tab.create",
-    path: "/create",
-    component: TaskCreatePage,
-  },
-  {
-    id: "evolution",
-    labelKey: "tab.evolution",
-    path: "/evolution",
-    component: EvolutionPage,
-  },
-  {
-    id: "sessions",
-    labelKey: "tab.sessions",
-    path: "/sessions",
-    component: SessionsPage,
-  },
-  {
-    id: "replay",
-    labelKey: "tab.replay",
-    path: "/replay",
-    component: ReplayPage,
-  },
-  {
-    id: "trace",
-    labelKey: "tab.trace",
-    path: "/trace",
-    component: TracePage,
-  },
-  {
-    id: "memory",
-    labelKey: "tab.memory",
-    path: "/memory",
-    component: MemoryPage,
-  },
-  {
-    id: "skills",
-    labelKey: "tab.skills",
-    path: "/skills",
-    component: SkillsPage,
-  },
-  {
-    id: "tools",
-    labelKey: "tab.tools",
-    path: "/tools",
-    component: ToolsPage,
-  },
-  {
-    id: "tool-history",
-    labelKey: "tab.toolHistory",
-    path: "/tool-history",
-    component: ToolHistoryPage,
-  },
-  {
-    id: "tool-playground",
-    labelKey: "tab.toolPlayground",
-    path: "/tool-playground",
-    component: ToolPlaygroundPage,
-  },
-  {
-    id: "plugins",
-    labelKey: "tab.plugins",
-    path: "/plugins",
-    component: PluginsPage,
-  },
-  {
-    id: "channels",
-    labelKey: "tab.channels",
-    path: "/channels",
-    component: ChannelsPage,
-  },
-  {
-    id: "analytics",
-    labelKey: "tab.analytics",
-    path: "/analytics",
-    component: AnalyticsPage,
-  },
-  {
-    id: "observability",
-    labelKey: "tab.observability",
-    path: "/observability",
-    component: ObservabilityPage,
-  },
-  {
-    id: "health",
-    labelKey: "tab.health",
-    path: "/health",
-    component: HealthPage,
-  },
-  {
-    id: "system",
-    labelKey: "tab.system",
-    path: "/system",
-    component: SystemPage,
-  },
-  {
-    id: "system-prompt",
-    labelKey: "tab.systemPrompt",
-    path: "/system-prompt",
-    component: SystemPromptPage,
-  },
+  // ----- Run -----
+  { id: "dashboard", labelKey: "tab.dashboard", path: "/dashboard", component: DashboardPage, category: "run" },
+  { id: "chat",      labelKey: "tab.chat",      path: "/chat",      component: ChatPage,      category: "run" },
+  { id: "tasks",     labelKey: "tab.tasks",     path: "/",          component: TaskListPage,  category: "run" },
+  { id: "board",     labelKey: "tab.board",     path: "/board",     component: TaskBoardPage, category: "run" },
+  { id: "create",    labelKey: "tab.create",    path: "/create",    component: TaskCreatePage, category: "run" },
+
+  // ----- History -----
+  { id: "evolution", labelKey: "tab.evolution", path: "/evolution", component: EvolutionPage, category: "history" },
+  { id: "sessions",  labelKey: "tab.sessions",  path: "/sessions",  component: SessionsPage,  category: "history" },
+  { id: "replay",    labelKey: "tab.replay",    path: "/replay",    component: ReplayPage,    category: "history" },
+  { id: "trace",     labelKey: "tab.trace",     path: "/trace",     component: TracePage,     category: "history" },
+  { id: "memory",    labelKey: "tab.memory",    path: "/memory",    component: MemoryPage,    category: "history" },
+
+  // ----- Catalog -----
+  { id: "skills",          labelKey: "tab.skills",          path: "/skills",          component: SkillsPage,         category: "catalog" },
+  { id: "tools",           labelKey: "tab.tools",           path: "/tools",           component: ToolsPage,          category: "catalog" },
+  { id: "tool-history",    labelKey: "tab.toolHistory",     path: "/tool-history",    component: ToolHistoryPage,    category: "catalog" },
+  { id: "tool-playground", labelKey: "tab.toolPlayground",  path: "/tool-playground", component: ToolPlaygroundPage, category: "catalog" },
+  { id: "plugins",         labelKey: "tab.plugins",         path: "/plugins",         component: PluginsPage,        category: "catalog" },
+  { id: "channels",        labelKey: "tab.channels",        path: "/channels",        component: ChannelsPage,       category: "catalog" },
+
+  // ----- Operate -----
+  { id: "analytics",     labelKey: "tab.analytics",     path: "/analytics",     component: AnalyticsPage,     category: "operate" },
+  { id: "observability", labelKey: "tab.observability", path: "/observability", component: ObservabilityPage, category: "operate" },
+  { id: "health",        labelKey: "tab.health",        path: "/health",        component: HealthPage,        category: "operate" },
+  { id: "system",        labelKey: "tab.system",        path: "/system",        component: SystemPage,        category: "operate" },
+  { id: "system-prompt", labelKey: "tab.systemPrompt",  path: "/system-prompt", component: SystemPromptPage,  category: "operate" },
 ];
 
 /** Map a digit key (1-9) → tab id, or null. Computed once at module load. */
@@ -179,4 +97,20 @@ export function tabForDigit(digit: string): ConsoleTab | undefined {
     return visible[idx];
   }
   return undefined;
+}
+
+/** Visible tabs grouped by category, in declared category order. */
+export function tabsByCategory(): Array<{ category: TabCategory; tabs: ConsoleTab[] }> {
+  const order: TabCategory[] = ["run", "history", "catalog", "operate"];
+  const buckets: Record<TabCategory, ConsoleTab[]> = {
+    run: [],
+    history: [],
+    catalog: [],
+    operate: [],
+  };
+  for (const tab of TABS) {
+    if (tab.hidden) continue;
+    buckets[tab.category ?? "run"].push(tab);
+  }
+  return order.map((category) => ({ category, tabs: buckets[category] }));
 }

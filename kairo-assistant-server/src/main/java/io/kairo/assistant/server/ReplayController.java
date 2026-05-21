@@ -85,19 +85,19 @@ public class ReplayController {
 
     /** Returns the same JSON the file exporter would produce, for preview in the UI. */
     @GetMapping("/{sessionId}/preview")
-    public Map<String, Object> preview(@PathVariable String sessionId) {
+    public ResponseEntity<Map<String, Object>> preview(@PathVariable String sessionId) {
         List<Map<String, Object>> entries = store.loadSession(sessionId);
-        Map<String, Object> result = new LinkedHashMap<>();
         if (entries.isEmpty()) {
-            result.put("error", "session not found");
-            return result;
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "session not found", "sessionId", sessionId));
         }
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("sessionId", sessionId);
         result.put("title", store.getTitle(sessionId));
         result.put("entries", redactEntries(entries));
         result.put("generatedAt", Instant.now().toString());
         result.put("note", "Redactor scrubs api-keys, emails, absolute paths, JWTs, UUIDs.");
-        return result;
+        return ResponseEntity.ok(result);
     }
 
     // ----- internals -----

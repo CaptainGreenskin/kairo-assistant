@@ -85,14 +85,15 @@ export function ToolsPage() {
 }
 
 function SideEffectBadge({ value }: { value: string }) {
+  // Matches io.kairo.api.tool.ToolSideEffect enum values
   const tone =
-    value === "READ"
+    value === "READ_ONLY"
       ? "bg-green-500/20 text-green-300"
       : value === "WRITE"
-      ? "bg-yellow-500/20 text-yellow-300"
-      : value === "DESTRUCTIVE"
-      ? "bg-red-500/20 text-red-300"
-      : "bg-text-dim/20 text-text-dim";
+        ? "bg-yellow-500/20 text-yellow-300"
+        : value === "SYSTEM_CHANGE"
+          ? "bg-red-500/20 text-red-300"
+          : "bg-text-dim/20 text-text-dim";
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded ${tone}`}>{value}</span>
   );

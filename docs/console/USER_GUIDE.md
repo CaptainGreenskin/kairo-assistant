@@ -9,21 +9,22 @@ everything you see there reflects the live state of the running assistant.
 
 ## Installing & launching
 
-The console ships with the server JAR — no separate install. Just start
-the server with the `cron-ui` Maven profile enabled (it bundles the Vite
-build output into the JAR's classpath):
+The console ships with the server JAR — no separate install. A plain
+`mvn package` runs Vite during the build and bundles the assets into
+the JAR's classpath:
 
 ```bash
 cd kairo-assistant-server
-mvn package -Pcron-ui -DskipTests
+mvn package -DskipTests
 java -jar target/kairo-assistant-server-*.jar
 ```
 
 Then open: <http://localhost:8080/cron/>
 
-Day-to-day Maven runs skip the `cron-ui` profile — that way contributors
-without Node installed aren't slowed down. The last built `dist/` is
-checked in, so you only need to re-run the profile when the UI changes.
+The `cron-ui` Maven profile is active by default. Opt out with
+`mvn package -P!cron-ui` when Node isn't installed on the build host;
+the last committed `dist/` under `target/classes/static/cron/` is
+preserved so the JAR still ships a working UI.
 
 ---
 

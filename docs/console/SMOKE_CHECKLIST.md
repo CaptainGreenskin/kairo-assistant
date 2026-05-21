@@ -8,9 +8,9 @@ minutes if everything is healthy.
 ## Pre-flight
 
 ```bash
-# Build (one-time, when UI changed)
+# Build (cron-ui profile is active by default; opt out with -P!cron-ui)
 cd kairo-assistant-server
-mvn package -Pcron-ui -DskipTests
+mvn package -DskipTests
 
 # Start
 java -jar target/kairo-assistant-server-*.jar

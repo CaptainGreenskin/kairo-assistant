@@ -6,6 +6,10 @@ import io.kairo.assistant.agent.AssistantSession;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,9 +28,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/cron")
 public class CronController {
 
+    private static final Logger log = LoggerFactory.getLogger(CronController.class);
+
     private final AssistantSession session;
     private final EventBroadcaster broadcaster;
     private final DashboardEventPublisher dashboard;
+
+    /**
+     * Fire-and-forget thread pool for {@link #trigger(String)} — the underlying
+     * {@code CronScheduler.trigger()} call invokes the agent synchronously and can take
+     * tens of seconds (or hang forever with a broken model key). We refuse to block
+     * the request thread on that.
+     */
+    private final ExecutorService triggerPool =
+            Executors.newCachedThreadPool(
+                    r -> {
+                        Thread t = new Thread(r, "kairo-cron-trigger");
+                        t.setDaemon(true);
+                        return t;
+                    });
 
     public CronController(
             AssistantSession session,
@@ -134,13 +154,26 @@ public class CronController {
 
     @PostMapping("/{taskId}/trigger")
     public Map<String, Object> trigger(@PathVariable String taskId) {
-        boolean fired = session.cronScheduler().trigger(taskId);
-        if (fired) {
-            dashboard.cron("cron.triggered", taskId);
+        // Pre-check existence on the request thread (cheap) so we can return 404-style
+        // feedback to the UI immediately; the actual fire happens on a background pool.
+        boolean exists =
+                session.cronScheduler().list().stream().anyMatch(t -> t.id().equals(taskId));
+        if (!exists) {
+            return Map.of("error", "task not found", "id", taskId);
         }
-        return fired
-                ? Map.of("status", "triggered", "id", taskId)
-                : Map.of("error", "task not found", "id", taskId);
+        dashboard.cron("cron.triggering", taskId);
+        triggerPool.submit(
+                () -> {
+                    try {
+                        boolean fired = session.cronScheduler().trigger(taskId);
+                        if (fired) {
+                            dashboard.cron("cron.triggered", taskId);
+                        }
+                    } catch (Throwable e) {
+                        log.warn("Cron trigger failed for {}: {}", taskId, e.toString());
+                    }
+                });
+        return Map.of("status", "triggering", "id", taskId);
     }
 
     @DeleteMapping("/{taskId}")

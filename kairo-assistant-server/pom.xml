@@ -87,18 +87,19 @@
     </build>
 
     <!--
-        The cron React UI under src/main/webapp/cron/ is built by Vite. Activated only
-        when `mvn package -Pcron-ui` runs OR when the dist/ already-built output is
-        not yet present. Day-to-day `mvn test` skips it so contributors without Node
-        installed are unaffected.
+        The cron React UI under src/main/webapp/cron/ is built by Vite during
+        `mvn package`. Default-on so a plain `mvn package` ships a working JAR.
+        Opt out with `mvn package -P!cron-ui` when Node isn't available; the
+        last committed dist/ in target/classes/static/cron/ is preserved.
+
+        Day-to-day `mvn test` doesn't trigger the profile's executions
+        (they're bound to `process-resources` / `generate-resources` phases).
     -->
     <profiles>
         <profile>
             <id>cron-ui</id>
             <activation>
-                <property>
-                    <name>cron-ui</name>
-                </property>
+                <activeByDefault>true</activeByDefault>
             </activation>
             <build>
                 <plugins>

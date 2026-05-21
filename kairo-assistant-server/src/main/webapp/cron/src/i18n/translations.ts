@@ -8,7 +8,7 @@ export const translations = {
   en: {
     "app.title": "Kairo Console",
     "app.subtitle": "cron + evolution + observability",
-    "app.backToAssistant": "← Back to assistant",
+    "app.backToAssistant": "💬 Chat with agent",
 
     "tab.tasks": "Tasks",
     "tab.create": "New Task",
@@ -36,6 +36,11 @@ export const translations = {
     "nav.lang": "Language",
     "nav.help": "Help",
 
+    "cat.run": "Run",
+    "cat.history": "History",
+    "cat.catalog": "Catalog",
+    "cat.operate": "Operate",
+
     "status.live": "live",
     "status.connecting": "connecting",
     "status.offline": "offline",
@@ -53,7 +58,7 @@ export const translations = {
   zh: {
     "app.title": "Kairo 控制台",
     "app.subtitle": "定时任务 + 演化 + 可观测",
-    "app.backToAssistant": "← 返回助手",
+    "app.backToAssistant": "💬 跟智能体聊天",
 
     "tab.tasks": "任务",
     "tab.create": "新建任务",
@@ -80,6 +85,11 @@ export const translations = {
     "nav.theme": "主题",
     "nav.lang": "语言",
     "nav.help": "帮助",
+
+    "cat.run": "运行",
+    "cat.history": "历史",
+    "cat.catalog": "目录",
+    "cat.operate": "运维",
 
     "status.live": "实时",
     "status.connecting": "连接中",

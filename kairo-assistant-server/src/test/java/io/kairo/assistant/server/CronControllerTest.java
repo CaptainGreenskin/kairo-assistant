@@ -145,8 +145,12 @@ class CronControllerTest {
     void triggerFiresOutsideSchedule() {
         var created = controller.create(Map.of("cron", "0 0 1 1 *", "prompt", "new year"));
         String id = (String) created.get("id");
+        // trigger is fire-and-forget now (the underlying scheduler call can block on
+        // the agent for tens of seconds); the request returns "triggering" and the
+        // actual fire happens on a background thread. See CronController for why.
         var result = controller.trigger(id);
-        assertEquals("triggered", result.get("status"));
+        assertEquals("triggering", result.get("status"));
+        assertEquals(id, result.get("id"));
     }
 
     @Test
