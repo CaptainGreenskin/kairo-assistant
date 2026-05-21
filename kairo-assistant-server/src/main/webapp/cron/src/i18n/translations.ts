@@ -24,8 +24,11 @@ export const translations = {
     "tab.analytics": "Analytics",
     "tab.health": "Health",
     "tab.system": "System",
+    "tab.systemPrompt": "Prompt",
     "tab.chat": "Chat",
     "tab.replay": "Replay",
+    "tab.trace": "Trace",
+    "tab.toolPlayground": "Playground",
 
     "nav.theme": "Theme",
     "nav.lang": "Language",
@@ -64,8 +67,11 @@ export const translations = {
     "tab.analytics": "分析",
     "tab.health": "健康",
     "tab.system": "系统",
+    "tab.systemPrompt": "提示词",
     "tab.chat": "聊天",
     "tab.replay": "重放",
+    "tab.trace": "追踪",
+    "tab.toolPlayground": "工具沙箱",
 
     "nav.theme": "主题",
     "nav.lang": "语言",

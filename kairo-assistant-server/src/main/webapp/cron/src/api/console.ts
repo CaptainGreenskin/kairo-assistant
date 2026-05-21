@@ -232,6 +232,70 @@ export const replayApi = {
     `/api/replay/${encodeURIComponent(sessionId)}?format=${format}`,
 };
 
+/** ----- Session timeline (for Trace tab) ----- */
+export interface SessionExportResponse {
+  sessionId: string;
+  format: string;
+  content: string; // JSON-encoded array when format=json
+}
+export const traceApi = {
+  exportJson: (sessionId: string) =>
+    api.get<SessionExportResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/export?format=json`,
+    ),
+};
+
+/** ----- Tool playground ----- */
+export interface ToolExecuteResponse {
+  tool: string;
+  success?: boolean;
+  content?: unknown;
+  error?: string;
+}
+export const toolExecuteApi = {
+  run: (tool: string, args: Record<string, unknown>) =>
+    api.post<ToolExecuteResponse>("/api/tools/execute", { tool, args }),
+};
+
+/** ----- System prompt editor ----- */
+export interface SystemPromptResponse {
+  content: string;
+  path?: string;
+  note?: string;
+}
+export const systemPromptApi = {
+  get: () => api.get<SystemPromptResponse>("/api/system-prompt"),
+  put: (content: string) =>
+    fetch("/api/system-prompt", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }).then((r) => r.json() as Promise<{ status?: string; error?: string }>),
+};
+
+/** ----- Plugin mutations ----- */
+export const pluginActionsApi = {
+  enable: (id: string) =>
+    api.post<{ status?: string; error?: string }>(
+      `/api/plugins/${encodeURIComponent(id)}/enable`,
+      {},
+    ),
+  disable: (id: string) =>
+    api.post<{ status?: string; error?: string }>(
+      `/api/plugins/${encodeURIComponent(id)}/disable`,
+      {},
+    ),
+  uninstall: (id: string) =>
+    api.del<{ status?: string; error?: string }>(
+      `/api/plugins/${encodeURIComponent(id)}`,
+    ),
+  installGitHub: (ownerRepo: string, ref?: string, scope: "USER" | "PROJECT" = "USER") =>
+    api.post<{ status?: string; id?: string; name?: string; error?: string }>(
+      "/api/plugins/install",
+      { source: { type: "github", ownerRepo, ref: ref || undefined }, scope },
+    ),
+};
+
 /** ----- Conversations ----- */
 export interface ConversationSummary {
   sessionId: string;

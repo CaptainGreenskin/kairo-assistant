@@ -16,6 +16,9 @@ import { ChatPage } from "../../pages/ChatPage";
 import { SystemPage } from "../../pages/SystemPage";
 import { ToolHistoryPage } from "../../pages/ToolHistoryPage";
 import { ReplayPage } from "../../pages/ReplayPage";
+import { TracePage } from "../../pages/TracePage";
+import { ToolPlaygroundPage } from "../../pages/ToolPlaygroundPage";
+import { SystemPromptPage } from "../../pages/SystemPromptPage";
 
 /**
  * Central registry of console tabs. Adding a tab is one line: register here +
@@ -79,6 +82,12 @@ export const TABS: ConsoleTab[] = [
     component: ReplayPage,
   },
   {
+    id: "trace",
+    labelKey: "tab.trace",
+    path: "/trace",
+    component: TracePage,
+  },
+  {
     id: "memory",
     labelKey: "tab.memory",
     path: "/memory",
@@ -101,6 +110,12 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.toolHistory",
     path: "/tool-history",
     component: ToolHistoryPage,
+  },
+  {
+    id: "tool-playground",
+    labelKey: "tab.toolPlayground",
+    path: "/tool-playground",
+    component: ToolPlaygroundPage,
   },
   {
     id: "plugins",
@@ -131,6 +146,12 @@ export const TABS: ConsoleTab[] = [
     labelKey: "tab.system",
     path: "/system",
     component: SystemPage,
+  },
+  {
+    id: "system-prompt",
+    labelKey: "tab.systemPrompt",
+    path: "/system-prompt",
+    component: SystemPromptPage,
   },
 ];
 
