@@ -584,41 +584,33 @@ public final class AssistantAgentFactory {
         return null;
     }
 
+    /**
+     * Build the {@link io.kairo.api.model.ModelProvider} for the configured assistant. Delegates
+     * to {@link io.kairo.core.model.DefaultProviderRegistry#withBuiltIns()} so adding a new
+     * provider upstream automatically becomes available here — no per-name switch to maintain.
+     *
+     * <p>If {@code config.apiBaseUrl()} is set we pass it as an override (handy for self-hosted
+     * deployments / proxies); otherwise the registry's preset URL applies.
+     */
     private static io.kairo.api.model.ModelProvider resolveModelProvider(AssistantConfig config) {
         String provider = config.modelProvider();
-        String className = switch (provider) {
-            case "anthropic" -> "io.kairo.core.model.anthropic.AnthropicProvider";
-            case "openai", "glm", "minimax", "deepseek" ->
-                    "io.kairo.core.model.openai.OpenAIProvider";
-            default -> "io.kairo.core.model.openai.OpenAIProvider";
-        };
-
-        try {
-            Class<?> providerClass = Class.forName(className);
-            if (config.apiBaseUrl() != null && !config.apiBaseUrl().isBlank()) {
-                String chatPath = resolveChatCompletionsPath(config.apiBaseUrl());
-                return (io.kairo.api.model.ModelProvider)
-                        providerClass
-                                .getConstructor(String.class, String.class, String.class)
-                                .newInstance(config.apiKey(), config.apiBaseUrl(), chatPath);
-            }
-            return (io.kairo.api.model.ModelProvider)
-                    providerClass
-                            .getConstructor(String.class)
-                            .newInstance(config.apiKey());
-        } catch (ClassNotFoundException e) {
+        if (provider == null || provider.isBlank()) {
+            throw new IllegalStateException("AssistantConfig.modelProvider must not be blank");
+        }
+        var registry = io.kairo.core.model.DefaultProviderRegistry.withBuiltIns();
+        if (!registry.isRegistered(provider)) {
             throw new IllegalStateException(
-                    "No ModelProvider found on classpath for: " + provider, e);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to create ModelProvider: " + provider, e);
+                    "Unknown provider '"
+                            + provider
+                            + "'. Registered: "
+                            + registry.names()
+                            + ". Use 'openai-compatible' with a custom apiBaseUrl for unlisted"
+                            + " providers.");
         }
-    }
-
-    private static String resolveChatCompletionsPath(String baseUrl) {
-        if (baseUrl.matches(".*/v\\d+/?$")) {
-            return "/chat/completions";
-        }
-        return "/v1/chat/completions";
+        var spec =
+                io.kairo.api.model.ProviderSpec.of(config.apiKey(), config.apiBaseUrl())
+                        .withModel(config.modelName());
+        return registry.create(provider, spec);
     }
 
     private static void registerAllTools(DefaultToolRegistry registry) {
