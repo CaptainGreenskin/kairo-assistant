@@ -1,8 +1,16 @@
 package io.kairo.assistant.cli;
 
-import io.kairo.assistant.agent.AssistantConfig;
+import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
+import io.kairo.api.tool.ToolExecutor;
 import io.kairo.assistant.agent.AssistantAgentFactory;
+import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
+import io.kairo.assistant.agent.SessionStore;
+import io.kairo.assistant.tool.ToolCallLogger;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -14,7 +22,11 @@ import picocli.CommandLine.Option;
         description = "Kairo Assistant — a personal AI assistant built on Kairo framework")
 public class KairoAssistantMain implements Runnable {
 
-    @Option(names = "--provider", description = "Model provider (anthropic, openai, glm, minimax, deepseek)", defaultValue = "anthropic")
+    @Option(
+            names = "--provider",
+            description =
+                    "Model provider (anthropic, openai, gemini, glm, minimax, deepseek, ...)",
+            defaultValue = "anthropic")
     private String provider;
 
     @Option(names = "--model", description = "Model name", defaultValue = "claude-sonnet-4-6")
@@ -23,19 +35,37 @@ public class KairoAssistantMain implements Runnable {
     @Option(names = "--api-key", description = "API key (or set env var)")
     private String apiKey;
 
-    @Option(names = "--api-base-url", description = "API base URL (for OpenAI-compatible providers)")
+    @Option(
+            names = "--api-base-url",
+            description = "API base URL (for OpenAI-compatible providers)")
     private String apiBaseUrl;
 
-    @Option(names = "--data-dir", description = "Data directory for notes/reminders")
+    @Option(names = "--data-dir", description = "Data directory for notes/reminders/sessions")
     private String dataDir;
 
-    @Option(names = "--daemon", description = "Run in daemon mode (background cron + channel listeners)")
+    @Option(
+            names = "--daemon",
+            description = "Run in daemon mode (background cron + channel listeners)")
     private boolean daemon;
 
-    @Option(names = "--task", description = "One-shot task (non-interactive)")
-    private String task;
+    @Option(
+            names = {"--print", "-p", "--task"},
+            description =
+                    "One-shot prompt (non-interactive). Final response goes to stdout; tool"
+                            + " calls are emitted as [tool: NAME] lines before the response.")
+    private String printPrompt;
 
-    @Option(names = "--max-iterations", description = "Max ReAct loop iterations", defaultValue = "30")
+    @Option(
+            names = "--session-id",
+            description =
+                    "Persist + resume conversation under <data-dir>/sessions/<id>.jsonl."
+                            + " Combined with --print, enables scripted multi-turn flows.")
+    private String sessionId;
+
+    @Option(
+            names = "--max-iterations",
+            description = "Max ReAct loop iterations",
+            defaultValue = "30")
     private int maxIterations;
 
     @Option(names = "--timeout", description = "Timeout in seconds", defaultValue = "600")
@@ -66,8 +96,8 @@ public class KairoAssistantMain implements Runnable {
 
         Runtime.getRuntime().addShutdownHook(new Thread(session::stop));
 
-        if (task != null) {
-            runOneShot(session, task);
+        if (printPrompt != null) {
+            runOneShot(session, printPrompt);
         } else if (daemon) {
             runDaemon(session);
         } else {
@@ -75,15 +105,69 @@ public class KairoAssistantMain implements Runnable {
         }
     }
 
-    private void runOneShot(AssistantSession session, String taskText) {
+    /**
+     * One-shot mode: subscribe to the tool-call logger, send {@code prompt} to the agent, emit
+     * {@code [tool: NAME]} for every tool the agent invokes, then print the final assistant text
+     * on its own line. When {@code --session-id} is supplied, append the new turn back to the
+     * session log so the next invocation can resume.
+     *
+     * <p>Output shape is stable for scripting / eval consumption:
+     *
+     * <pre>
+     * [tool: search]
+     * [tool: send_message]
+     *
+     * &lt;final assistant response text&gt;
+     * </pre>
+     *
+     * <p>The blank line after the last tool marker separates the structured tool log from the
+     * free-text response.
+     */
+    private void runOneShot(AssistantSession session, String prompt) {
+        SessionStore store = sessionId != null ? sessionStoreFor(session) : null;
         try {
-            var msg = io.kairo.api.message.Msg.of(io.kairo.api.message.MsgRole.USER, taskText);
-            var result = session.agent().call(msg).block();
-            if (result != null) {
-                System.out.println(result.text());
+            installToolLogger(session);
+
+            Msg userMsg = Msg.of(MsgRole.USER, prompt);
+            List<Msg> toAppend = new ArrayList<>();
+            toAppend.add(userMsg);
+
+            // Replay note: --session-id today persists turns but the agent's per-call memory
+            // bridge is what actually feeds prior context into the next call. Loading and
+            // re-injecting full history here would double-count messages already in
+            // MemoryStore. The on-disk JSONL exists for external inspection / eval re-scoring.
+            var result = session.agent().call(userMsg).block();
+            String responseText = result != null ? result.text() : "";
+
+            System.out.println();
+            System.out.println(responseText == null ? "" : responseText);
+
+            if (store != null) {
+                toAppend.add(Msg.of(MsgRole.ASSISTANT, responseText == null ? "" : responseText));
+                store.append(sessionId, toAppend);
             }
         } finally {
             session.stop();
+        }
+    }
+
+    private SessionStore sessionStoreFor(AssistantSession session) {
+        String dir =
+                session.config().dataDir() != null
+                        ? session.config().dataDir()
+                        : System.getProperty("user.home") + "/.kairo-assistant";
+        return new SessionStore(Paths.get(dir));
+    }
+
+    /**
+     * Subscribe to the {@link ToolCallLogger} (if present) and print one {@code [tool: NAME]}
+     * line per tool invocation. The eval runner parses these to verify which tools the agent
+     * called.
+     */
+    private void installToolLogger(AssistantSession session) {
+        ToolExecutor te = session.toolExecutor();
+        if (te instanceof ToolCallLogger logger) {
+            logger.addListener(rec -> System.out.println("[tool: " + rec.toolName() + "]"));
         }
     }
 
