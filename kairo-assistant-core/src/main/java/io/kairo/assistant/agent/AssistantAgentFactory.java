@@ -8,7 +8,9 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.plugin.PluginManager;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
+import io.kairo.assistant.tool.ToolCallLogger;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.mcp.spi.DefaultMcpPlugin;
 import io.kairo.plugin.ComponentRegistrar;
@@ -126,8 +128,13 @@ public final class AssistantAgentFactory {
             registerAllTools(toolRegistry);
         }
 
-        DefaultToolExecutor toolExecutor =
-                new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
+        // Wrap with ToolCallLogger so the /api/tools/history endpoint (and the
+        // Console's Tool history tab) sees real invocations. The logger is a
+        // transparent ToolExecutor decorator; the wrapped DefaultToolExecutor
+        // still does the actual work.
+        ToolExecutor toolExecutor =
+                new ToolCallLogger(
+                        new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard()));
 
         io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(config);
 
@@ -244,8 +251,9 @@ public final class AssistantAgentFactory {
             registerAllTools(toolRegistry);
         }
 
-        DefaultToolExecutor toolExecutor =
-                new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard());
+        ToolExecutor toolExecutor =
+                new ToolCallLogger(
+                        new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard()));
 
         io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(modelConfig);
 
@@ -263,6 +271,55 @@ public final class AssistantAgentFactory {
 
         return buildAgent(modelConfig, modelProvider, modelName,
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore);
+    }
+
+    /**
+     * Build a standalone agent suitable for pooling under a specific session key. {@code
+     * textDeltaConsumer} receives every text token from the model as it streams in, so the
+     * caller can fan it out to its session subscribers (chat SSE / WebSocket / DingTalk stream)
+     * without waiting for the full response. Pass {@code null} for non-streaming consumers.
+     *
+     * <p>This is the entrypoint used by {@code AgentSessionPool}'s per-key agent factory so
+     * each pooled agent has a session-scoped delta sink wired in at construction.
+     */
+    public static Agent createPooledAgent(
+            AssistantConfig config,
+            java.util.function.Consumer<String> textDeltaConsumer) {
+        Path dataPath = Path.of(config.dataDir());
+        MemoryStore memoryStore = new FileMemoryStore(dataPath.resolve("memory"));
+
+        DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
+        toolRegistry.scan("io.kairo.assistant.tool");
+        if (toolRegistry.getAll().isEmpty()) {
+            registerAllTools(toolRegistry);
+        }
+        ToolExecutor toolExecutor =
+                new ToolCallLogger(
+                        new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard()));
+        io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(config);
+
+        ConversationStore conversationStore =
+                new ConversationStore(dataPath.resolve("conversations"));
+        Map<String, Object> toolDeps = new HashMap<>();
+        toolDeps.put("memoryStore", memoryStore);
+        toolDeps.put("conversationStore", conversationStore);
+        toolDeps.put("modelProvider", modelProvider);
+        toolDeps.put("modelName", config.modelName());
+
+        SkillRegistry skillRegistry = AssistantSkills.createRegistry();
+        String systemPrompt = buildSystemPrompt(skillRegistry, dataPath);
+
+        return buildAgent(
+                config,
+                modelProvider,
+                config.modelName(),
+                toolRegistry,
+                toolExecutor,
+                toolDeps,
+                systemPrompt,
+                memoryStore,
+                null,
+                textDeltaConsumer);
     }
 
     /**
@@ -290,7 +347,7 @@ public final class AssistantAgentFactory {
             io.kairo.api.model.ModelProvider modelProvider,
             AssistantConfig config,
             ToolRegistry toolRegistry,
-            io.kairo.core.tool.DefaultToolExecutor toolExecutor) {
+            ToolExecutor toolExecutor) {
         Path pluginRoot = dataPath.resolve("plugins");
         Path cacheRoot = pluginRoot.resolve("cache");
         Path dataRoot = pluginRoot.resolve("data");
@@ -391,7 +448,7 @@ public final class AssistantAgentFactory {
             io.kairo.api.model.ModelProvider modelProvider,
             AssistantConfig config,
             ToolRegistry toolRegistry,
-            io.kairo.core.tool.DefaultToolExecutor toolExecutor,
+            ToolExecutor toolExecutor,
             PluginMcpRegistrar mcpRegistrar,
             PluginAuditLogger audit) {
         ModelConfig defaultModel =
@@ -433,23 +490,37 @@ public final class AssistantAgentFactory {
                                     io.kairo.api.model.ModelProvider modelProvider,
                                     String modelName,
                                     ToolRegistry toolRegistry,
-                                    DefaultToolExecutor toolExecutor,
+                                    ToolExecutor toolExecutor,
                                     Map<String, Object> toolDeps,
                                     String systemPrompt,
                                     MemoryStore memoryStore) {
         return buildAgent(config, modelProvider, modelName, toolRegistry, toolExecutor, toolDeps,
-                systemPrompt, memoryStore, null);
+                systemPrompt, memoryStore, null, null);
     }
 
     private static Agent buildAgent(AssistantConfig config,
                                     io.kairo.api.model.ModelProvider modelProvider,
                                     String modelName,
                                     ToolRegistry toolRegistry,
-                                    DefaultToolExecutor toolExecutor,
+                                    ToolExecutor toolExecutor,
                                     Map<String, Object> toolDeps,
                                     String systemPrompt,
                                     MemoryStore memoryStore,
                                     Object pluginHookHandler) {
+        return buildAgent(config, modelProvider, modelName, toolRegistry, toolExecutor, toolDeps,
+                systemPrompt, memoryStore, pluginHookHandler, null);
+    }
+
+    private static Agent buildAgent(AssistantConfig config,
+                                    io.kairo.api.model.ModelProvider modelProvider,
+                                    String modelName,
+                                    ToolRegistry toolRegistry,
+                                    ToolExecutor toolExecutor,
+                                    Map<String, Object> toolDeps,
+                                    String systemPrompt,
+                                    MemoryStore memoryStore,
+                                    Object pluginHookHandler,
+                                    java.util.function.Consumer<String> textDeltaConsumer) {
         float trigger = config.compactionTrigger();
         CompactionThresholds compaction = CompactionThresholds.builder()
                 .triggerPressure(trigger)
@@ -474,6 +545,13 @@ public final class AssistantAgentFactory {
                 .memoryStore(memoryStore)
                 .compactionThresholds(compaction)
                 .streaming(true);
+        if (textDeltaConsumer != null) {
+            // Per-session token sink. With this wired, each text delta from a
+            // streaming-capable model provider flows into the session router
+            // immediately, so the chat UI renders tokens as they arrive
+            // instead of waiting for the full response.
+            builder = builder.textDeltaConsumer(textDeltaConsumer);
+        }
         if (pluginHookHandler != null) {
             builder = builder.hook(pluginHookHandler);
         }
