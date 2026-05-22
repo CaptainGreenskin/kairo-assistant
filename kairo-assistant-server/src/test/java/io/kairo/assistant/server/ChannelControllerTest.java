@@ -54,9 +54,7 @@ class ChannelControllerTest {
                 "senderId", "user123",
                 "senderNick", "Test User");
 
-        var result = controller.dingTalkWebhook(body)
-                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())))
-                .block();
+        var result = controller.dingTalkWebhook(body);
         assertNotNull(result);
     }
 
@@ -67,9 +65,7 @@ class ChannelControllerTest {
                         "message", Map.of("content", "hello from feishu"),
                         "sender", Map.of("sender_id", Map.of("open_id", "ou_abc"))));
 
-        var result = controller.feishuWebhook(body)
-                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())))
-                .block();
+        var result = controller.feishuWebhook(body);
         assertNotNull(result);
     }
 
@@ -94,7 +90,7 @@ class ChannelControllerTest {
     @Test
     void dingTalkWebhookWithEmptyTextReturnsError() {
         var body = Map.<String, Object>of("text", Map.of("content", ""));
-        var result = controller.dingTalkWebhook(body).block();
+        var result = controller.dingTalkWebhook(body);
         assertNotNull(result);
         assertTrue(result.containsKey("error"));
     }
@@ -150,7 +146,7 @@ class ChannelControllerTest {
     @Test
     void feishuWebhookEmptyBodyReturnsError() {
         var body = Map.<String, Object>of();
-        var result = controller.feishuWebhook(body).block();
+        var result = controller.feishuWebhook(body);
         assertNotNull(result);
         assertTrue(result.containsKey("error"));
     }
