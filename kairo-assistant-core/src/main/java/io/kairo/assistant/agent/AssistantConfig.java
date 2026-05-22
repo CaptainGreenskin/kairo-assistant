@@ -117,32 +117,47 @@ public record AssistantConfig(
                     env);
         }
 
+        /**
+         * Resolve the API key for {@code provider} from environment variables. Tries the universal
+         * {@code KAIRO_API_KEY} first, then the conventional {@code <PROVIDER>_API_KEY} (with the
+         * Gemini alias to {@code GOOGLE_API_KEY}), then the legacy {@code KAIRO_ASSISTANT_API_KEY}
+         * fallback.
+         *
+         * <p>The set of acceptable provider names is now the union of what {@link
+         * io.kairo.core.model.DefaultProviderRegistry#withBuiltIns()} knows about (anthropic /
+         * openai / gemini / qwen / glm / deepseek / minimax / kimi / moonshot / groq / xai / grok
+         * / openrouter / ollama / lm-studio / openai-compatible). No hard-coded switch here.
+         */
         private String resolveApiKey(String provider) {
             String universal = System.getenv("KAIRO_API_KEY");
             if (universal != null && !universal.isBlank()) {
                 return universal;
             }
-            return switch (provider) {
-                case "anthropic" -> System.getenv("ANTHROPIC_API_KEY");
-                case "openai" -> System.getenv("OPENAI_API_KEY");
-                case "glm" -> System.getenv("GLM_API_KEY");
-                case "minimax" -> System.getenv("MINIMAX_API_KEY");
-                case "deepseek" -> System.getenv("DEEPSEEK_API_KEY");
-                default -> System.getenv("KAIRO_ASSISTANT_API_KEY");
-            };
+            if (provider != null && !provider.isBlank()) {
+                String envName =
+                        ("gemini".equalsIgnoreCase(provider) || "google".equalsIgnoreCase(provider))
+                                ? "GOOGLE_API_KEY"
+                                : provider.replace('-', '_').toUpperCase() + "_API_KEY";
+                String fromProviderVar = System.getenv(envName);
+                if (fromProviderVar != null && !fromProviderVar.isBlank()) {
+                    return fromProviderVar;
+                }
+            }
+            return System.getenv("KAIRO_ASSISTANT_API_KEY");
         }
 
+        /**
+         * Resolve the base URL override for {@code provider}. The {@code KAIRO_BASE_URL} env var
+         * always wins. Otherwise we return {@code null} and let {@link
+         * io.kairo.core.model.DefaultProviderRegistry} apply its built-in preset URL — no
+         * duplicate per-provider switch needed here.
+         */
         private String resolveBaseUrl(String provider) {
             String envUrl = System.getenv("KAIRO_BASE_URL");
             if (envUrl != null && !envUrl.isBlank()) {
                 return envUrl;
             }
-            return switch (provider) {
-                case "glm" -> "https://open.bigmodel.cn/api/paas/v4";
-                case "minimax" -> "https://api.minimaxi.com/v1";
-                case "deepseek" -> "https://api.deepseek.com/v1";
-                default -> null;
-            };
+            return null;
         }
     }
 }

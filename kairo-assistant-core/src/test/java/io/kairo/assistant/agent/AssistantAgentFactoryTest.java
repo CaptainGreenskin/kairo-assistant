@@ -136,15 +136,20 @@ class AssistantAgentFactoryTest {
     }
 
     @Test
-    void unknownProviderFallsBackToOpenai() {
-        AssistantConfig config = AssistantConfig.builder()
-                .apiKey("test-key")
-                .modelProvider("some-unknown-provider")
-                .dataDir(tempDir.toString())
-                .build();
+    void unknownProviderThrowsWithHelpfulMessage() {
+        // After the ProviderRegistry migration, an unknown provider name is a clear error
+        // (instead of silently falling back to OpenAI with a misleading default URL). The
+        // error message lists every registered provider so the user can self-correct.
+        AssistantConfig config =
+                AssistantConfig.builder()
+                        .apiKey("test-key")
+                        .modelProvider("some-unknown-provider")
+                        .dataDir(tempDir.toString())
+                        .build();
 
-        AssistantSession session = AssistantAgentFactory.create(config);
-
-        assertThat(session.agent()).isNotNull();
+        assertThatThrownBy(() -> AssistantAgentFactory.create(config))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unknown provider 'some-unknown-provider'")
+                .hasMessageContaining("openai-compatible");
     }
 }

@@ -49,24 +49,35 @@ class AssistantConfigTest {
     }
 
     @Test
-    void apiBaseUrlAutoResolvedForGlm() {
-        AssistantConfig config = AssistantConfig.builder()
-                .modelProvider("glm").apiKey("glm-key").build();
-        assertThat(config.apiBaseUrl()).contains("bigmodel.cn");
-    }
+    void apiBaseUrlNullByDefaultForNonAnthropic() {
+        // After migrating to ProviderRegistry the AssistantConfig no longer hardcodes baseUrls
+        // per provider — the registry's built-in presets supply them at provider construction
+        // time. AssistantConfig.apiBaseUrl is now null unless KAIRO_BASE_URL is set.
+        AssistantConfig glm =
+                AssistantConfig.builder().modelProvider("glm").apiKey("glm-key").build();
+        assertThat(glm.apiBaseUrl()).isNull();
 
-    @Test
-    void apiBaseUrlAutoResolvedForDeepseek() {
-        AssistantConfig config = AssistantConfig.builder()
-                .modelProvider("deepseek").apiKey("ds-key").build();
-        assertThat(config.apiBaseUrl()).contains("deepseek.com");
+        AssistantConfig ds =
+                AssistantConfig.builder().modelProvider("deepseek").apiKey("ds-key").build();
+        assertThat(ds.apiBaseUrl()).isNull();
     }
 
     @Test
     void apiBaseUrlNullForAnthropic() {
-        AssistantConfig config = AssistantConfig.builder()
-                .modelProvider("anthropic").apiKey("ak").build();
+        AssistantConfig config =
+                AssistantConfig.builder().modelProvider("anthropic").apiKey("ak").build();
         assertThat(config.apiBaseUrl()).isNull();
+    }
+
+    @Test
+    void apiBaseUrlExplicitOverrideIsHonored() {
+        AssistantConfig config =
+                AssistantConfig.builder()
+                        .modelProvider("openai-compatible")
+                        .apiKey("k")
+                        .apiBaseUrl("https://my-corp-llm.example.com")
+                        .build();
+        assertThat(config.apiBaseUrl()).isEqualTo("https://my-corp-llm.example.com");
     }
 
     @Test
