@@ -488,13 +488,30 @@ public class StatusController {
         return result;
     }
 
+    // Prefer ToolCallLogger as the source of truth: it captures EVERY tool
+    // invocation routed through the executor (agent ReAct loops + playground
+    // direct calls). MetricsCollector.toolCallStats was only fed in narrow
+    // code paths and showed zero in practice (F23).
     @GetMapping("/analytics/tools")
     public Map<String, Object> toolAnalytics() {
         Map<String, Object> result = new LinkedHashMap<>();
-        var stats = metrics.toolCallStats();
-        result.put("totalToolCalls", stats.values().stream().mapToLong(Long::longValue).sum());
-        result.put("uniqueToolsUsed", stats.size());
-        result.put("tools", stats);
+        if (session.toolExecutor() instanceof ToolCallLogger logger) {
+            var byTool = new java.util.TreeMap<String, Long>();
+            for (var rec : logger.allCalls()) {
+                byTool.merge(rec.toolName(), 1L, Long::sum);
+            }
+            result.put("totalToolCalls", logger.totalCalls());
+            result.put("totalErrors", logger.totalErrors());
+            result.put("avgDurationMs", logger.averageDurationMs());
+            result.put("uniqueToolsUsed", byTool.size());
+            result.put("tools", byTool);
+        } else {
+            var stats = metrics.toolCallStats();
+            result.put("totalToolCalls", stats.values().stream().mapToLong(Long::longValue).sum());
+            result.put("uniqueToolsUsed", stats.size());
+            result.put("tools", stats);
+            result.put("note", "ToolCallLogger not active");
+        }
         return result;
     }
 
@@ -527,21 +544,28 @@ public class StatusController {
         return result;
     }
 
+    // Agent-call stats come from MetricsCollector (recorded on every agent
+    // call completion in the gateway). Reading from ToolCallLogger here was a
+    // mis-wiring: that's per-tool, not per-agent (F22). Also surface tool
+    // stats separately so the page can show both.
     @GetMapping("/analytics/latency")
     public Map<String, Object> latencyAnalytics() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("percentiles", metrics.durationPercentiles());
 
-        long calls = 0;
-        long totalDuration = 0;
-        if (session.toolExecutor() instanceof ToolCallLogger logger) {
-            calls = logger.totalCalls();
-            totalDuration = logger.totalDurationMs();
+        long agentCalls = metrics.agentCalls();
+        long agentDuration = metrics.agentDurationTotalMs();
+        result.put("totalAgentCalls", agentCalls);
+        result.put("totalDurationMs", agentDuration);
+        if (agentCalls > 0) {
+            result.put("avgDurationMs", agentDuration / agentCalls);
         }
-        result.put("totalAgentCalls", calls);
-        result.put("totalDurationMs", totalDuration);
-        if (calls > 0) {
-            result.put("avgDurationMs", totalDuration / calls);
+        if (session.toolExecutor() instanceof ToolCallLogger logger) {
+            result.put("totalToolCalls", logger.totalCalls());
+            result.put("totalToolDurationMs", logger.totalDurationMs());
+            if (logger.totalCalls() > 0) {
+                result.put("avgToolDurationMs", logger.averageDurationMs());
+            }
         }
         return result;
     }
@@ -625,7 +649,7 @@ public class StatusController {
             result.put("content", "");
         }
         result.put("path", file.toString());
-        result.put("note", "Changes take effect after restart");
+        result.put("note", "Saved to disk and re-read on every new agent turn — no server restart needed");
         return result;
     }
 
@@ -639,7 +663,7 @@ public class StatusController {
         try {
             Files.createDirectories(file.getParent());
             Files.writeString(file, content);
-            return Map.of("status", "saved", "note", "Changes take effect after restart");
+            return Map.of("status", "saved", "note", "Saved to disk and re-read on every new agent turn — no server restart needed");
         } catch (IOException e) {
             return Map.of("error", "Failed to save: " + e.getMessage());
         }
@@ -660,6 +684,37 @@ public class StatusController {
                         "scope", inst.scope().name(),
                         "enabled", inst.enabled()))
                 .toList();
+    }
+
+    // Read-only listing of every registered subagent — including plugins that
+    // ship `agents/*.md`. Without this endpoint operators couldn't verify a
+    // plugin's agent contribution actually landed after enable (issue F18).
+    @GetMapping("/subagents")
+    public Map<String, Object> subagents() {
+        var registry = session.subagentRegistry();
+        if (registry == null) {
+            return Map.of("total", 0, "subagents", List.of());
+        }
+        var entries =
+                registry.list().stream()
+                        .map(
+                                def -> {
+                                    Map<String, Object> e = new java.util.LinkedHashMap<>();
+                                    e.put("name", def.name());
+                                    e.put("namespace", def.namespace());
+                                    e.put("qualifiedName", def.qualifiedName());
+                                    e.put(
+                                            "description",
+                                            def.description() == null ? "" : def.description());
+                                    e.put("model", def.model());
+                                    e.put("tools", def.tools());
+                                    return e;
+                                })
+                        .toList();
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("total", entries.size());
+        result.put("subagents", entries);
+        return result;
     }
 
 }

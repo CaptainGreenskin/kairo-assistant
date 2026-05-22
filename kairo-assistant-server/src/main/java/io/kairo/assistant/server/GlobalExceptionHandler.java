@@ -26,6 +26,16 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "Request timed out. The model may be overloaded."));
     }
 
+    // Spring throws this for unknown static resources (e.g. /favicon.ico when
+    // no icon file is shipped). Browsers refetch the icon on every navigation,
+    // so a 500 per request floods the log and the browser DevTools error pane.
+    // 404 is the correct status and is silent in DevTools.
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<Void> handleNoResource(
+            org.springframework.web.servlet.resource.NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneral(Exception e) {
         log.error("Unhandled exception", e);

@@ -105,6 +105,21 @@ public class CronController {
         dashboard.cron("cron.created", task.id());
         Map<String, Object> result = new LinkedHashMap<>(toView(task));
         result.put("status", "created");
+        // The CronScheduler SPI doesn't accept a caller-supplied id — it always
+        // generates its own. Surface this when the user passed one so they
+        // don't issue subsequent DELETE/PUT against an id that was silently
+        // dropped (callers used to see "task not found" with no explanation).
+        Object requestedId = body.get("id");
+        if (requestedId instanceof String s
+                && !s.isBlank()
+                && !s.equals(task.id())) {
+            result.put(
+                    "warning",
+                    "Caller-supplied id '" + s
+                            + "' was ignored; scheduler assigned '"
+                            + task.id()
+                            + "'. Use the returned id for follow-up operations.");
+        }
         return result;
     }
 

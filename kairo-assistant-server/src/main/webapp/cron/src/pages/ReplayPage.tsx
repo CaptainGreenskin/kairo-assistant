@@ -13,7 +13,7 @@ export function ReplayPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const sessions = useQuery({
     queryKey: ["conversations"],
-    queryFn: conversationsApi.list,
+    queryFn: () => conversationsApi.list(),
   });
   const preview = useQuery({
     queryKey: ["replay", selected],

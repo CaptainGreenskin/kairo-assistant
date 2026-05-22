@@ -95,7 +95,11 @@ public class ConversationStore {
                         String id = p.getFileName().toString().replace(".jsonl", "");
                         String preview = getSessionPreview(p);
                         Map<String, String> info = new LinkedHashMap<>();
+                        // Emit both `id` (legacy, kept for any external scripts)
+                        // and `sessionId` (matches the conversation-detail and
+                        // search endpoints — the console UI reads sessionId).
                         info.put("id", id);
+                        info.put("sessionId", id);
                         info.put("preview", preview);
                         String title = getTitle(id);
                         if (title != null) {
@@ -140,6 +144,21 @@ public class ConversationStore {
                     .forEach(file -> {
                         if (results.size() >= limit) return;
                         String sessionId = file.getFileName().toString().replace(".jsonl", "");
+                        String title = getTitle(sessionId);
+                        // Title hit — surface even if no message body matches.
+                        // Previously titles weren't searched at all (F20), so a
+                        // session titled "用三句话介绍春天" wouldn't appear in
+                        // search results for "春天" unless the same word also
+                        // happened to occur inside a message body verbatim.
+                        if (title != null && title.toLowerCase().contains(lowerQuery)) {
+                            Map<String, Object> result = new LinkedHashMap<>();
+                            result.put("sessionId", sessionId);
+                            result.put("sessionTitle", title);
+                            result.put("matchedIn", "title");
+                            result.put("snippet", extractSnippet(title, lowerQuery));
+                            results.add(result);
+                            if (results.size() >= limit) return;
+                        }
                         try {
                             List<String> lines = Files.readAllLines(file);
                             List<Map<String, Object>> messages = new ArrayList<>();
@@ -158,7 +177,6 @@ public class ConversationStore {
                                 if (content.toLowerCase().contains(lowerQuery)) {
                                     Map<String, Object> result = new LinkedHashMap<>();
                                     result.put("sessionId", sessionId);
-                                    String title = getTitle(sessionId);
                                     if (title != null) result.put("sessionTitle", title);
                                     result.put("role", msg.get("role"));
                                     result.put("timestamp", msg.get("timestamp"));
@@ -230,6 +248,10 @@ public class ConversationStore {
             }
         }
 
+        // Markdown is the canonical text-export format; HTML is a thin wrapper
+        // that escapes the markdown and surrounds it with a self-contained
+        // page. Previously ?format=html silently returned markdown (F21) —
+        // browser-side downloaders saved a .html file containing raw markdown.
         StringBuilder sb = new StringBuilder();
         sb.append("# Conversation: ").append(sessionId).append("\n\n");
         for (var entry : entries) {
@@ -254,7 +276,26 @@ public class ConversationStore {
             }
             sb.append("\n\n").append(content).append("\n\n---\n\n");
         }
-        return sb.toString();
+        String markdown = sb.toString();
+        if ("html".equalsIgnoreCase(format)) {
+            return wrapMarkdownAsHtml(sessionId, markdown);
+        }
+        return markdown;
+    }
+
+    private String wrapMarkdownAsHtml(String sessionId, String markdown) {
+        String escaped =
+                markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return "<!DOCTYPE html>\n"
+                + "<html lang=\"en\"><head><meta charset=\"utf-8\">"
+                + "<title>Conversation · " + sessionId + "</title>"
+                + "<style>body{font-family:-apple-system,system-ui,sans-serif;"
+                + "max-width:840px;margin:2em auto;padding:0 1em;"
+                + "background:#0e0e0e;color:#e0e0e0;line-height:1.5}"
+                + "pre{white-space:pre-wrap;word-break:break-word;"
+                + "background:#1a1a1a;padding:1em;border-radius:6px;"
+                + "border:1px solid #2a2a2a}</style></head><body>"
+                + "<pre>" + escaped + "</pre></body></html>";
     }
 
     public boolean setTitle(String sessionId, String title) {

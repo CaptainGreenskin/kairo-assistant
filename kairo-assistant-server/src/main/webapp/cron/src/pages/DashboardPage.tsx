@@ -1,5 +1,6 @@
 import { useEvolutionSkills } from "../hooks/useEvolution";
 import { useCronTasks } from "../hooks/useCron";
+import { PluginSlot } from "../components/PluginSlot";
 
 /**
  * Executive overview tab. Surfaces a 1-screen snapshot of the assistant's
@@ -55,6 +56,11 @@ export function DashboardPage() {
           <StatCard label="Stale" value={stale} tone={stale > 0 ? "warn" : undefined} />
           <StatCard label="Archived" value={archived} />
         </div>
+      </section>
+
+      {/* Slot: third-party / built-in plugin cards inject here. */}
+      <section className="mb-8 grid grid-cols-3 gap-3">
+        <PluginSlot name="dashboard.cards" />
       </section>
 
       <section>

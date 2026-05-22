@@ -53,7 +53,18 @@ export interface HealthDetailedResponse {
   status: string;
   uptime?: string;
   uptimeSeconds?: number;
-  memory?: { heapUsedMb?: number; heapMaxMb?: number; [k: string]: unknown };
+  memory?: {
+    usedMB?: number;
+    maxMB?: number;
+    totalMB?: number;
+    freePercent?: number;
+    // Legacy field names — backend used to emit heapUsedMb/heapMaxMb; the
+    // current /api/health/detailed serializer emits usedMB/maxMB. Both shapes
+    // are accepted by HealthPage so the UI works against either version.
+    heapUsedMb?: number;
+    heapMaxMb?: number;
+    [k: string]: unknown;
+  };
   jvm?: Record<string, unknown>;
   channels?: Record<string, unknown>;
   [k: string]: unknown;
@@ -336,10 +347,16 @@ export interface ConversationDetail {
   }>;
 }
 export const conversationsApi = {
-  list: () =>
-    api.get<{ total: number; conversations: ConversationSummary[] }>(
-      "/api/conversations",
-    ),
+  // Paginated. Default 100 rows is plenty for the sidebar; raise via `limit`
+  // up to the server-side cap (500). `offset` lets future infinite-scroll UI
+  // pull more pages without changing the contract.
+  list: (limit = 100, offset = 0) =>
+    api.get<{
+      total: number;
+      limit?: number;
+      offset?: number;
+      conversations: ConversationSummary[];
+    }>(`/api/conversations?limit=${limit}&offset=${offset}`),
   get: (sessionId: string) =>
     api.get<ConversationDetail>(`/api/conversations/${encodeURIComponent(sessionId)}`),
   search: (q: string) =>

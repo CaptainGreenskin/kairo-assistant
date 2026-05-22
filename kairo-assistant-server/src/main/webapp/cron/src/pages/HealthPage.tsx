@@ -38,14 +38,18 @@ export function HealthPage() {
             <section>
               <h3 className="text-xs uppercase tracking-wider text-text-dim mb-3">Heap</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <Kv label="Used (MB)" value={String(data.memory.heapUsedMb ?? "—")} />
-                <Kv label="Max (MB)" value={String(data.memory.heapMaxMb ?? "—")} />
-                {data.memory.heapUsedMb !== undefined && data.memory.heapMaxMb !== undefined && (
-                  <Kv
-                    label="Utilization"
-                    value={`${(((data.memory.heapUsedMb as number) / (data.memory.heapMaxMb as number)) * 100).toFixed(0)}%`}
-                  />
-                )}
+                <Kv label="Used (MB)" value={String(data.memory.usedMB ?? data.memory.heapUsedMb ?? "—")} />
+                <Kv label="Max (MB)" value={String(data.memory.maxMB ?? data.memory.heapMaxMb ?? "—")} />
+                {(() => {
+                  const used = (data.memory.usedMB ?? data.memory.heapUsedMb) as number | undefined;
+                  const max = (data.memory.maxMB ?? data.memory.heapMaxMb) as number | undefined;
+                  return used !== undefined && max !== undefined ? (
+                    <Kv
+                      label="Utilization"
+                      value={`${((used / max) * 100).toFixed(0)}%`}
+                    />
+                  ) : null;
+                })()}
               </div>
             </section>
           )}

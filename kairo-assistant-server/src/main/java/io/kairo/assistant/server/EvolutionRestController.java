@@ -86,11 +86,18 @@ class EvolutionRestControllerConfig {
             return view;
         }
 
+        // `dryRun` is accepted as an alias for `dry` so the more conventional
+        // camelCase param name doesn't silently fall back to the default (which
+        // is `true` — the safer mode). If both are passed, `dry` wins because
+        // it's the canonical name from the day-one API.
         @PostMapping("/curator/run")
         public Map<String, Object> runCurator(
-                @RequestParam(name = "dry", defaultValue = "true") boolean dry) {
-            UmbrellaConsolidationPlanner.PlanResult result = controller.runCurator(dry).block();
-            if (!dry && result != null && result.totalChanged() > 0) {
+                @RequestParam(name = "dry", required = false) Boolean dry,
+                @RequestParam(name = "dryRun", required = false) Boolean dryRun) {
+            boolean effective = dry != null ? dry : (dryRun != null ? dryRun : true);
+            UmbrellaConsolidationPlanner.PlanResult result =
+                    controller.runCurator(effective).block();
+            if (!effective && result != null && result.totalChanged() > 0) {
                 dashboard.evolution("evolution.curator-run");
             }
             return resultToJson(result);

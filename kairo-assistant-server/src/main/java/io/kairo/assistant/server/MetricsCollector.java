@@ -57,7 +57,41 @@ public class MetricsCollector {
     }
     public void recordMessage() { totalMessages.increment(); }
     public void recordEndpointHit(String endpoint) {
-        endpointCounts.computeIfAbsent(endpoint, k -> new LongAdder()).increment();
+        endpointCounts.computeIfAbsent(normalizeEndpoint(endpoint), k -> new LongAdder())
+                .increment();
+    }
+
+    /**
+     * Collapse high-cardinality path segments to placeholders so the endpoint
+     * counter map doesn't grow unbounded as session/task/plugin IDs flow
+     * through the URL space (F24). Matches: UUID, hex 8-32, plugin id form
+     * `path:name:uuid` or `github:hash:uuid`, then individual session-id
+     * fragments inside known prefixes.
+     */
+    static String normalizeEndpoint(String raw) {
+        if (raw == null || raw.isEmpty()) return raw;
+        int sp = raw.indexOf(' ');
+        String prefix = sp >= 0 ? raw.substring(0, sp + 1) : "";
+        String path = sp >= 0 ? raw.substring(sp + 1) : raw;
+        boolean leadingSlash = path.startsWith("/");
+        String[] segs = path.split("/");
+        StringBuilder out = new StringBuilder();
+        if (leadingSlash) out.append('/');
+        boolean first = true;
+        for (String s : segs) {
+            if (s.isEmpty()) continue;
+            if (!first) out.append('/');
+            first = false;
+            if (s.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+                    || s.matches("[0-9a-fA-F]{8,64}")
+                    || s.matches("\\d{4,}")
+                    || (s.contains(":") && s.split(":").length >= 2)) {
+                out.append(":id");
+            } else {
+                out.append(s);
+            }
+        }
+        return prefix + out.toString();
     }
     public long endpointHits(String endpoint) {
         LongAdder adder = endpointCounts.get(endpoint);
@@ -77,6 +111,8 @@ public class MetricsCollector {
     public long outputTokens() { return totalOutputTokens.sum(); }
     public long totalTokens() { return totalInputTokens.sum() + totalOutputTokens.sum(); }
     public long messageCount() { return totalMessages.sum(); }
+    public long agentCalls() { return totalAgentCalls.sum(); }
+    public long agentDurationTotalMs() { return totalAgentCallDurationMs.sum(); }
     public long percentile(double p) {
         durationLock.lock();
         try {

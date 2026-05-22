@@ -48,8 +48,9 @@ export function SystemPromptPage() {
         <div>
           <h2 className="text-lg font-semibold">System prompt</h2>
           <p className="text-text-dim text-sm">
-            Custom instructions prepended to every agent system prompt. Changes
-            take effect after server restart.
+            Custom instructions prepended to every agent system prompt. Saved
+            to disk and re-read on every new agent turn — no server restart
+            needed.
           </p>
         </div>
         <div className="text-xs text-text-dim font-mono">

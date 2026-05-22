@@ -8,7 +8,7 @@ export function SessionsPage() {
 
   const list = useQuery({
     queryKey: ["conversations"],
-    queryFn: conversationsApi.list,
+    queryFn: () => conversationsApi.list(),
   });
 
   const search = useQuery({

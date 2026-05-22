@@ -20,7 +20,7 @@ export function TracePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const sessions = useQuery({
     queryKey: ["conversations"],
-    queryFn: conversationsApi.list,
+    queryFn: () => conversationsApi.list(),
   });
 
   const trace = useQuery({

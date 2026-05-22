@@ -22,12 +22,16 @@ public class HealthController {
         this.gateway = gateway;
     }
 
-    @GetMapping("/health")
+    // Bare-root health endpoints are mapped under /healthz/* (K8s liveness/
+    // readiness convention) so they don't shadow the Console's React Router
+    // routes at /health. The /api/health/* set still exists in StatusController
+    // for the UI and any callers preferring the /api prefix.
+    @GetMapping("/healthz")
     public Map<String, String> health() {
         return Map.of("status", "ok");
     }
 
-    @GetMapping("/health/detailed")
+    @GetMapping("/healthz/detailed")
     public Map<String, Object> healthDetailed() {
         var result = new LinkedHashMap<String, Object>();
         result.put("status", "ok");
@@ -60,7 +64,7 @@ public class HealthController {
         return result;
     }
 
-    @GetMapping("/v1/health")
+    @GetMapping("/v1/healthz")
     public Map<String, String> healthV1() {
         return Map.of("status", "ok");
     }

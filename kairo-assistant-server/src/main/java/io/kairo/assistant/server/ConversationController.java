@@ -28,12 +28,26 @@ public class ConversationController {
         this.store = new ConversationStore(dataDir.resolve("conversations").resolve("web"));
     }
 
+    // Paginated list. The backing store keeps an in-memory list of sessions
+    // sorted by lastModified desc, so server-side slicing is cheap; the win
+    // is on the wire and in the browser — 5000+ entries blew up the Sessions
+    // sidebar before this. Defaults match a reasonable first-screen page.
     @GetMapping
-    public Map<String, Object> list() {
-        List<Map<String, String>> sessions = store.listSessions();
+    public Map<String, Object> list(
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        int safeOffset = Math.max(0, offset);
+        List<Map<String, String>> all = store.listSessions();
+        int total = all.size();
+        int from = Math.min(safeOffset, total);
+        int to = Math.min(from + safeLimit, total);
+        List<Map<String, String>> page = all.subList(from, to);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("total", sessions.size());
-        result.put("conversations", sessions);
+        result.put("total", total);
+        result.put("limit", safeLimit);
+        result.put("offset", safeOffset);
+        result.put("conversations", page);
         return result;
     }
 

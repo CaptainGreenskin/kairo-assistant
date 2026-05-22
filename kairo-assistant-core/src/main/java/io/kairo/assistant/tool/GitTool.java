@@ -51,12 +51,16 @@ public class GitTool implements SyncTool {
         String dir = (String) args.getOrDefault("directory", ".");
         String extraArgs = (String) args.getOrDefault("args", "");
 
+        // --no-pager: large outputs (diff/show/log without --oneline) otherwise
+        // wedge for 30s+ when git decides to invoke `less` even on a non-tty
+        // subprocess. Manifests as the tool timing out rather than returning
+        // results.
         String gitCmd = switch (action.toLowerCase()) {
-            case "status" -> "git status --short";
-            case "log" -> "git log --oneline " + extraArgs;
-            case "diff" -> "git diff " + extraArgs;
-            case "branch" -> "git branch -a";
-            case "show" -> "git show " + extraArgs;
+            case "status" -> "git --no-pager status --short";
+            case "log" -> "git --no-pager log --oneline " + extraArgs;
+            case "diff" -> "git --no-pager diff " + extraArgs;
+            case "branch" -> "git --no-pager branch -a";
+            case "show" -> "git --no-pager show " + extraArgs;
             default -> null;
         };
 
@@ -70,15 +74,37 @@ public class GitTool implements SyncTool {
                     .redirectErrorStream(true)
                     .start();
             try {
-                boolean finished = process.waitFor(30, TimeUnit.SECONDS);
-                String output;
-                try (var is = process.getInputStream()) {
-                    output = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                }
+                // Drain stdout concurrently. Otherwise large outputs (e.g.
+                // `git diff` on a dirty repo) fill the 64KB pipe buffer, git
+                // blocks writing, and process.waitFor() deadlocks for the
+                // full 30s window.
+                final java.util.concurrent.CompletableFuture<String> stdout =
+                        new java.util.concurrent.CompletableFuture<>();
+                Thread drain = new Thread(() -> {
+                    try (var is = process.getInputStream()) {
+                        stdout.complete(new String(
+                                is.readAllBytes(), StandardCharsets.UTF_8));
+                    } catch (IOException ioe) {
+                        stdout.completeExceptionally(ioe);
+                    }
+                }, "git-stdout-drain");
+                drain.setDaemon(true);
+                drain.start();
 
+                boolean finished = process.waitFor(30, TimeUnit.SECONDS);
                 if (!finished) {
                     process.destroyForcibly();
+                    drain.interrupt();
                     return ToolResult.error("git", "Command timed out");
+                }
+
+                String output;
+                try {
+                    output = stdout.get(2, TimeUnit.SECONDS);
+                } catch (java.util.concurrent.ExecutionException
+                         | java.util.concurrent.TimeoutException ex) {
+                    return ToolResult.error("git",
+                            "Failed to read git output: " + ex.getMessage());
                 }
 
                 output = ToolLimits.truncate(output);
