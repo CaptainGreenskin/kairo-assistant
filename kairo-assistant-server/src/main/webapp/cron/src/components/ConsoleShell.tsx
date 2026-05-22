@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { CATEGORY_LABELS, TABS, tabsByCategory, type ConsoleTab } from "../lib/console/tabs";
+import { Menu, X } from "lucide-react";
+import { CATEGORY_LABELS, TABS, tabsByCategory } from "../lib/console/tabs";
 import { THEMES, useTheme } from "../hooks/useTheme";
 import { useI18n } from "../i18n";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
@@ -13,188 +14,192 @@ interface Props {
   children: React.ReactNode;
 }
 
+/**
+ * Sidebar-based shell, inspired by hermes-agent/web. 21 tabs are grouped
+ * into 4 categories (Run / History / Catalog / Operate) stacked vertically
+ * on the left. Each tab has a lucide icon + label. On small screens the
+ * sidebar collapses into a hamburger-driven drawer.
+ *
+ * Header (theme picker / lang toggle / help) sits in the topmost slot of
+ * the sidebar; footer (status bar) is across the bottom. Keyboard shortcuts
+ * (1-9, ⌘K, t, l, ?) still work — no change to useKeyboardNav.
+ */
 export function ConsoleShell({ children }: Props) {
   const { t, lang, toggleLang } = useI18n();
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const boot = useBootScreen();
   const loc = useLocation();
   const visible = TABS.filter((tab) => !tab.hidden);
   const grouped = tabsByCategory();
   const digitFor = (id: string) => {
-    const idx = visible.findIndex((t) => t.id === id);
+    const idx = visible.findIndex((tab) => tab.id === id);
     return idx >= 0 && idx < 9 ? String(idx + 1) : null;
   };
+  const activeTab = visible.find((tab) =>
+    tab.path === "/" ? loc.pathname === "/" : loc.pathname.startsWith(tab.path),
+  );
 
   useKeyboardNav(() => setHelpOpen(true));
 
-  const isActive = (path: string) => {
-    if (path === "/") return loc.pathname === "/" || loc.pathname === "";
-    return loc.pathname.startsWith(path);
-  };
+  const closeDrawer = () => setDrawerOpen(false);
 
-  return (
-    <div className="min-h-full flex flex-col bg-bg text-text">
-      {/* Top navigation */}
-      <header className="bg-surface border-b border-border px-4 py-2 flex items-center gap-4 shrink-0">
-        <Link to="/dashboard" className="text-base font-semibold tracking-tight whitespace-nowrap">
+  const sidebar = (
+    <aside
+      className="bg-surface border-r border-border flex flex-col h-full w-60 shrink-0"
+      style={{ minHeight: "100vh" }}
+    >
+      {/* Brand */}
+      <Link
+        to="/dashboard"
+        onClick={closeDrawer}
+        className="px-4 py-3 border-b border-border block"
+      >
+        <div className="text-base font-semibold tracking-tight">
           <span className="text-accent">☤ </span>
           {t("app.title")}
-          <span className="text-text-dim font-normal hidden md:inline"> · {t("app.subtitle")}</span>
-        </Link>
-
-        <nav className="flex gap-1 flex-1 min-w-0 text-sm">
-          {grouped.map(({ category, tabs }) => (
-            <CategoryDropdown
-              key={category}
-              label={t(CATEGORY_LABELS[category])}
-              tabs={tabs}
-              isActive={isActive}
-              digitFor={digitFor}
-              t={t}
-            />
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-1 shrink-0">
-          <ThemePicker theme={theme} setTheme={setTheme} />
-          <button
-            type="button"
-            onClick={toggleLang}
-            className="px-2 py-1 text-xs border border-border rounded text-text-dim hover:text-text"
-            title={t("nav.lang")}
-          >
-            {lang.toUpperCase()}
-          </button>
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="px-2 py-1 text-xs border border-border rounded text-text-dim hover:text-text font-mono"
-            title={t("nav.help")}
-          >
-            ?
-          </button>
-          {/*
-            Was a hard <a href="/"> back to the assistant home — but the
-            assistant server has no SPA at "/", so it 404'd. The chat tab
-            is the closest equivalent landing inside this SPA.
-          */}
-          <Link
-            to="/chat"
-            className="ml-2 text-text-dim hover:text-text text-xs underline-offset-2 hover:underline"
-          >
-            {t("app.backToAssistant")}
-          </Link>
         </div>
-      </header>
+        <div className="text-[10px] text-text-dim">{t("app.subtitle")}</div>
+      </Link>
 
-      {/* Main */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-2">
+        {grouped.map(({ category, tabs }) => (
+          <div key={category} className="mb-3">
+            <div className="px-4 py-1 text-[10px] uppercase tracking-wider text-text-dim font-semibold">
+              {t(CATEGORY_LABELS[category])}
+            </div>
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const active =
+                tab.path === "/" ? loc.pathname === "/" : loc.pathname.startsWith(tab.path);
+              const digit = digitFor(tab.id);
+              return (
+                <Link
+                  key={tab.id}
+                  to={tab.path}
+                  onClick={closeDrawer}
+                  className={[
+                    "flex items-center gap-2.5 px-4 py-1.5 text-sm relative",
+                    active
+                      ? "bg-accent/15 text-accent border-r-2 border-accent"
+                      : "text-text-dim hover:text-text hover:bg-primary/40",
+                  ].join(" ")}
+                  data-active={active}
+                >
+                  <Icon size={15} strokeWidth={1.75} />
+                  <span className="flex-1 truncate">{t(tab.labelKey)}</span>
+                  {digit && (
+                    <kbd className="font-mono text-[10px] opacity-50">{digit}</kbd>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
 
-      {/* Status bar */}
-      <footer className="bg-surface border-t border-border px-4 py-1 text-xs text-text-dim flex items-center justify-between shrink-0">
-        <span>
-          <span className="opacity-50">{t("status.shortcuts")}:</span>{" "}
-          <kbd className="font-mono mx-1">1-9</kbd> {t("status.tabs")}
-          <span className="mx-2">·</span>
-          <kbd className="font-mono mx-1">⌘K</kbd> palette
-          <span className="mx-2">·</span>
-          <kbd className="font-mono mx-1">t</kbd> {t("status.theme")}
-          <span className="mx-2">·</span>
-          <kbd className="font-mono mx-1">?</kbd> {t("nav.help")}
-        </span>
-        <span className="flex items-center gap-2 font-mono opacity-60">
+      {/* Sidebar footer — controls */}
+      <div className="border-t border-border p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <ThemePicker theme={theme} setTheme={setTheme} />
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={toggleLang}
+              className="px-2 py-1 text-xs border border-border rounded text-text-dim hover:text-text"
+              title={t("nav.lang")}
+            >
+              {lang.toUpperCase()}
+            </button>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="px-2 py-1 text-xs border border-border rounded text-text-dim hover:text-text font-mono"
+              title={t("nav.help")}
+            >
+              ?
+            </button>
+          </div>
+        </div>
+        <div className="text-[10px] text-text-dim flex items-center gap-2">
           <SseStatusBadge />
-          kairo-console
-        </span>
-      </footer>
+          <span className="opacity-60 font-mono">kairo-console</span>
+        </div>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div className="min-h-full flex bg-bg text-text">
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex sticky top-0 h-screen">{sidebar}</div>
+
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50"
+          onClick={closeDrawer}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="h-full">
+            {sidebar}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile header */}
+        <header className="md:hidden bg-surface border-b border-border px-3 py-2 flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="p-1 text-text-dim hover:text-text"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="text-sm font-semibold tracking-tight truncate">
+            <span className="text-accent">☤ </span>
+            {activeTab ? t(activeTab.labelKey) : t("app.title")}
+          </div>
+        </header>
+
+        {/* Main */}
+        <main className="flex-1 overflow-auto min-w-0">{children}</main>
+
+        {/* Bottom shortcut hint (desktop only — sidebar shows status badge) */}
+        <footer className="hidden md:flex bg-surface/60 border-t border-border px-4 py-1 text-[10px] text-text-dim items-center justify-between shrink-0">
+          <span>
+            <span className="opacity-50">{t("status.shortcuts")}:</span>{" "}
+            <kbd className="font-mono mx-1">1-9</kbd> {t("status.tabs")}
+            <span className="mx-2">·</span>
+            <kbd className="font-mono mx-1">⌘K</kbd> palette
+            <span className="mx-2">·</span>
+            <kbd className="font-mono mx-1">t</kbd> {t("status.theme")}
+            <span className="mx-2">·</span>
+            <kbd className="font-mono mx-1">?</kbd> {t("nav.help")}
+          </span>
+          {activeTab && (
+            <span className="opacity-50 font-mono">{activeTab.path}</span>
+          )}
+        </footer>
+      </div>
 
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
       <CommandPalette />
       {boot.open && <BootScreen onDone={boot.dismiss} />}
-    </div>
-  );
-}
 
-/**
- * Category bucket in the top nav. Click the header → opens a dropdown of the
- * tabs in that category. Header is highlighted when any of its tabs is active.
- * Dropdown closes on outside-click or Escape.
- */
-function CategoryDropdown({
-  label,
-  tabs,
-  isActive,
-  digitFor,
-  t,
-}: {
-  label: string;
-  tabs: ConsoleTab[];
-  isActive: (path: string) => boolean;
-  digitFor: (id: string) => string | null;
-  t: (key: import("../i18n").TranslationKey) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const anyActive = tabs.some((tab) => isActive(tab.path));
-
-  useEffect(() => {
-    if (!open) return;
-    const click = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", click);
-    window.addEventListener("keydown", esc);
-    return () => {
-      window.removeEventListener("mousedown", click);
-      window.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-
-  return (
-    <div ref={wrap} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={[
-          "px-3 py-1.5 rounded-md transition-colors text-sm",
-          anyActive
-            ? "bg-primary text-text"
-            : "text-text-dim hover:text-text hover:bg-primary/40",
-        ].join(" ")}
-        aria-expanded={open}
-      >
-        {label}
-        <span className="ml-1.5 text-xs opacity-50">▾</span>
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 bg-surface border border-border rounded-md shadow-lg min-w-[180px] py-1 z-50">
-          {tabs.map((tab) => {
-            const active = isActive(tab.path);
-            const digit = digitFor(tab.id);
-            return (
-              <Link
-                key={tab.id}
-                to={tab.path}
-                onClick={() => setOpen(false)}
-                className={[
-                  "flex items-center justify-between px-3 py-1.5 text-sm whitespace-nowrap",
-                  active
-                    ? "bg-accent/20 text-accent"
-                    : "text-text-dim hover:text-text hover:bg-primary/40",
-                ].join(" ")}
-              >
-                <span>{t(tab.labelKey)}</span>
-                {digit && (
-                  <kbd className="ml-3 font-mono text-[10px] opacity-50">{digit}</kbd>
-                )}
-              </Link>
-            );
-          })}
-        </div>
+      {/* Mobile close button when drawer open — drawn last to overlay sidebar */}
+      {drawerOpen && (
+        <button
+          type="button"
+          onClick={closeDrawer}
+          className="md:hidden fixed top-3 right-3 z-50 p-2 bg-surface border border-border rounded text-text-dim"
+          aria-label="Close menu"
+        >
+          <X size={18} />
+        </button>
       )}
     </div>
   );
@@ -203,8 +208,6 @@ function CategoryDropdown({
 function SseStatusBadge() {
   const status = useSseStatus();
   const { t } = useI18n();
-  // Hide entirely until the EventSource has emitted its first state — avoids
-  // a one-frame "connecting" flash every time the user navigates.
   if (status === null) return null;
   const tone =
     status === "live"

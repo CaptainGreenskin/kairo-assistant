@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { withApiKey } from "../api/client";
 
 /**
  * Subscribe to the assistant server's KairoEventBus over SSE and trigger
@@ -53,7 +54,11 @@ export function EventStreamProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SseStatus>(null);
 
   useEffect(() => {
-    const source = new EventSource(STREAM_URL);
+    // withApiKey appends ?api_key=<key> when KAIRO_API_KEY is in play and the
+    // user bootstrapped via ?api_key=... (see api/client.ts). Browser
+    // EventSource can't set Authorization headers, so query-param auth is the
+    // only way to keep the live-event channel working under API-key mode.
+    const source = new EventSource(withApiKey(STREAM_URL));
 
     source.onopen = () => setStatus("live");
     source.onerror = () => {

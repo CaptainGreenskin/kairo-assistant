@@ -1,4 +1,27 @@
 import type { ComponentType } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  Boxes,
+  Brain,
+  Cable,
+  ClipboardList,
+  FileText,
+  FlaskConical,
+  GitBranch,
+  Heart,
+  History,
+  LayoutDashboard,
+  MessageSquare,
+  Network,
+  Plus,
+  Puzzle,
+  Sparkles,
+  SquarePen,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import type { TranslationKey } from "../../i18n";
 import { TaskListPage } from "../../pages/TaskListPage";
 import { TaskCreatePage } from "../../pages/TaskCreatePage";
@@ -46,45 +69,47 @@ export const CATEGORY_LABELS: Record<TabCategory, TranslationKey> = {
 export interface ConsoleTab {
   id: string;
   labelKey: TranslationKey;
-  path: string; // React Router path under BrowserRouter basename="/cron"
+  path: string; // React Router path under root BrowserRouter
   component: ComponentType;
+  /** lucide-react icon for the sidebar nav. */
+  icon: LucideIcon;
   /** Override the digit shortcut. Default: position (1-based) up to 9. */
   digit?: string;
   /** Hide from the top nav (route still exists). */
   hidden?: boolean;
-  /** Which top-nav bucket the tab lives in. Defaults to "run". */
+  /** Which sidebar bucket the tab lives in. Defaults to "run". */
   category?: TabCategory;
 }
 
 export const TABS: ConsoleTab[] = [
   // ----- Run -----
-  { id: "dashboard", labelKey: "tab.dashboard", path: "/dashboard", component: DashboardPage, category: "run" },
-  { id: "chat",      labelKey: "tab.chat",      path: "/chat",      component: ChatPage,      category: "run" },
-  { id: "tasks",     labelKey: "tab.tasks",     path: "/",          component: TaskListPage,  category: "run" },
-  { id: "board",     labelKey: "tab.board",     path: "/board",     component: TaskBoardPage, category: "run" },
-  { id: "create",    labelKey: "tab.create",    path: "/create",    component: TaskCreatePage, category: "run" },
+  { id: "dashboard", labelKey: "tab.dashboard", path: "/dashboard", component: DashboardPage, icon: LayoutDashboard, category: "run" },
+  { id: "chat",      labelKey: "tab.chat",      path: "/chat",      component: ChatPage,      icon: MessageSquare,   category: "run" },
+  { id: "tasks",     labelKey: "tab.tasks",     path: "/",          component: TaskListPage,  icon: ClipboardList,   category: "run" },
+  { id: "board",     labelKey: "tab.board",     path: "/board",     component: TaskBoardPage, icon: Boxes,           category: "run" },
+  { id: "create",    labelKey: "tab.create",    path: "/create",    component: TaskCreatePage, icon: Plus,           category: "run" },
 
   // ----- History -----
-  { id: "evolution", labelKey: "tab.evolution", path: "/evolution", component: EvolutionPage, category: "history" },
-  { id: "sessions",  labelKey: "tab.sessions",  path: "/sessions",  component: SessionsPage,  category: "history" },
-  { id: "replay",    labelKey: "tab.replay",    path: "/replay",    component: ReplayPage,    category: "history" },
-  { id: "trace",     labelKey: "tab.trace",     path: "/trace",     component: TracePage,     category: "history" },
-  { id: "memory",    labelKey: "tab.memory",    path: "/memory",    component: MemoryPage,    category: "history" },
+  { id: "evolution", labelKey: "tab.evolution", path: "/evolution", component: EvolutionPage, icon: Sparkles,       category: "history" },
+  { id: "sessions",  labelKey: "tab.sessions",  path: "/sessions",  component: SessionsPage,  icon: History,        category: "history" },
+  { id: "replay",    labelKey: "tab.replay",    path: "/replay",    component: ReplayPage,    icon: FileText,       category: "history" },
+  { id: "trace",     labelKey: "tab.trace",     path: "/trace",     component: TracePage,     icon: GitBranch,      category: "history" },
+  { id: "memory",    labelKey: "tab.memory",    path: "/memory",    component: MemoryPage,    icon: Brain,          category: "history" },
 
   // ----- Catalog -----
-  { id: "skills",          labelKey: "tab.skills",          path: "/skills",          component: SkillsPage,         category: "catalog" },
-  { id: "tools",           labelKey: "tab.tools",           path: "/tools",           component: ToolsPage,          category: "catalog" },
-  { id: "tool-history",    labelKey: "tab.toolHistory",     path: "/tool-history",    component: ToolHistoryPage,    category: "catalog" },
-  { id: "tool-playground", labelKey: "tab.toolPlayground",  path: "/tool-playground", component: ToolPlaygroundPage, category: "catalog" },
-  { id: "plugins",         labelKey: "tab.plugins",         path: "/plugins",         component: PluginsPage,        category: "catalog" },
-  { id: "channels",        labelKey: "tab.channels",        path: "/channels",        component: ChannelsPage,       category: "catalog" },
+  { id: "skills",          labelKey: "tab.skills",          path: "/skills",          component: SkillsPage,         icon: Bot,            category: "catalog" },
+  { id: "tools",           labelKey: "tab.tools",           path: "/tools",           component: ToolsPage,          icon: Wrench,         category: "catalog" },
+  { id: "tool-history",    labelKey: "tab.toolHistory",     path: "/tool-history",    component: ToolHistoryPage,    icon: History,        category: "catalog" },
+  { id: "tool-playground", labelKey: "tab.toolPlayground",  path: "/tool-playground", component: ToolPlaygroundPage, icon: FlaskConical,   category: "catalog" },
+  { id: "plugins",         labelKey: "tab.plugins",         path: "/plugins",         component: PluginsPage,        icon: Puzzle,         category: "catalog" },
+  { id: "channels",        labelKey: "tab.channels",        path: "/channels",        component: ChannelsPage,       icon: Cable,          category: "catalog" },
 
   // ----- Operate -----
-  { id: "analytics",     labelKey: "tab.analytics",     path: "/analytics",     component: AnalyticsPage,     category: "operate" },
-  { id: "observability", labelKey: "tab.observability", path: "/observability", component: ObservabilityPage, category: "operate" },
-  { id: "health",        labelKey: "tab.health",        path: "/health",        component: HealthPage,        category: "operate" },
-  { id: "system",        labelKey: "tab.system",        path: "/system",        component: SystemPage,        category: "operate" },
-  { id: "system-prompt", labelKey: "tab.systemPrompt",  path: "/system-prompt", component: SystemPromptPage,  category: "operate" },
+  { id: "analytics",     labelKey: "tab.analytics",     path: "/analytics",     component: AnalyticsPage,     icon: BarChart3,     category: "operate" },
+  { id: "observability", labelKey: "tab.observability", path: "/observability", component: ObservabilityPage, icon: Activity,      category: "operate" },
+  { id: "health",        labelKey: "tab.health",        path: "/health",        component: HealthPage,        icon: Heart,         category: "operate" },
+  { id: "system",        labelKey: "tab.system",        path: "/system",        component: SystemPage,        icon: Network,       category: "operate" },
+  { id: "system-prompt", labelKey: "tab.systemPrompt",  path: "/system-prompt", component: SystemPromptPage,  icon: SquarePen,     category: "operate" },
 ];
 
 /** Map a digit key (1-9) → tab id, or null. Computed once at module load. */

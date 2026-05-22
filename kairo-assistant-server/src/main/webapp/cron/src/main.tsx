@@ -8,6 +8,10 @@ import { ThemeProvider } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 
+// Plugin registrations — each module self-registers into pluginSlotRegistry
+// at import time. Add new built-in plugins here.
+import "./plugins/examplePlugin";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,7 +29,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <I18nProvider>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter basename="/cron">
+          <BrowserRouter>
             <App />
             <Toaster
               richColors

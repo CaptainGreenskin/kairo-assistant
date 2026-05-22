@@ -7,14 +7,68 @@ import type {
   SkillSummary,
 } from "./types";
 
+// API key handling for KAIRO_API_KEY-protected servers. On first load we look
+// for ?api_key=<key> in the URL (so a magic link like
+// http://host/?api_key=... bootstraps the session) and stash it in
+// sessionStorage. Every fetch and EventSource URL then carries the key — either
+// as Authorization: Bearer for fetch, or ?api_key= for SSE (EventSource can't
+// set headers). Browser EventSource is the load-bearing reason this exists; pure
+// header auth would lock the console out of live updates when API key is on.
+const API_KEY_STORAGE = "kc-api-key";
+
+function bootstrapApiKey(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("api_key");
+    if (fromUrl && fromUrl.length > 0) {
+      sessionStorage.setItem(API_KEY_STORAGE, fromUrl);
+      params.delete("api_key");
+      const cleaned =
+        window.location.pathname +
+        (params.toString() ? "?" + params.toString() : "") +
+        window.location.hash;
+      window.history.replaceState({}, "", cleaned);
+    }
+  } catch {
+    // sessionStorage may be disabled (private window) — fall through, the
+    // console just won't authenticate. That's the same as before.
+  }
+}
+bootstrapApiKey();
+
+export function getApiKey(): string | null {
+  try {
+    return sessionStorage.getItem(API_KEY_STORAGE);
+  } catch {
+    return null;
+  }
+}
+
+/** Append ?api_key=<key> to a URL when a key is configured. For SSE / asset
+ * URLs that can't carry an Authorization header. */
+export function withApiKey(url: string): string {
+  const key = getApiKey();
+  if (!key) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return url + sep + "api_key=" + encodeURIComponent(key);
+}
+
 /** Thin fetch wrapper that throws on non-2xx + parses JSON. */
 async function request<T>(
   url: string,
   init?: RequestInit,
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) || {}),
+  };
+  const key = getApiKey();
+  if (key && !headers.Authorization) {
+    headers.Authorization = "Bearer " + key;
+  }
   const resp = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers,
   });
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
