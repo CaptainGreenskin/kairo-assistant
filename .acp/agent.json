@@ -1,0 +1,33 @@
+{
+  "$schema": "https://zed.dev/schemas/acp-agent.json",
+  "id": "kairo-assistant",
+  "name": "Kairo Assistant",
+  "version": "0.1.0",
+  "description": "Java-based personal AI assistant built on Kairo. Implements the Agent Client Protocol over stdio.",
+  "homepage": "https://github.com/CaptainGreenskin/kairo-assistant",
+  "license": "MIT",
+  "distribution": {
+    "java": {
+      "jar": "kairo-assistant-cli/target/kairo-assistant-cli-0.1.0-SNAPSHOT.jar",
+      "args": ["--acp-server"]
+    }
+  },
+  "requires": {
+    "java": ">=17"
+  },
+  "capabilities": {
+    "protocolVersion": 1,
+    "promptCapabilities": {
+      "image": false,
+      "audio": false
+    },
+    "sessionCapabilities": {
+      "load": true,
+      "cancel": true
+    }
+  },
+  "features": {
+    "toolCallStreaming": true,
+    "comment": "Wires SessionAwareToolLogger so editor sees per-tool cards live"
+  }
+}

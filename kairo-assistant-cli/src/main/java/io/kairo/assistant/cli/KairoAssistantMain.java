@@ -1,5 +1,11 @@
 package io.kairo.assistant.cli;
 
+import io.kairo.acp.server.AcpStdioServer;
+import io.kairo.acp.server.DefaultAcpAgent;
+import io.kairo.acp.server.StreamingAcpBridge;
+import io.kairo.api.acp.AcpCapabilities;
+import io.kairo.api.acp.AcpImplementation;
+import io.kairo.api.acp.AcpSessionUpdate;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolExecutor;
@@ -63,6 +69,15 @@ public class KairoAssistantMain implements Runnable {
     private String sessionId;
 
     @Option(
+            names = "--acp-server",
+            description =
+                    "Run as an Agent Client Protocol stdio server. Reads JSON-RPC 2.0 frames"
+                            + " from stdin, writes responses + session/update notifications to"
+                            + " stdout. Use this when an editor (Zed, OpenCode, ...) spawns"
+                            + " kairo-assistant as a subprocess.")
+    private boolean acpServer;
+
+    @Option(
             names = "--max-iterations",
             description = "Max ReAct loop iterations",
             defaultValue = "30")
@@ -96,13 +111,71 @@ public class KairoAssistantMain implements Runnable {
 
         Runtime.getRuntime().addShutdownHook(new Thread(session::stop));
 
-        if (printPrompt != null) {
+        if (acpServer) {
+            runAcpServer(session);
+        } else if (printPrompt != null) {
             runOneShot(session, printPrompt);
         } else if (daemon) {
             runDaemon(session);
         } else {
             new ReplSession(session).run();
         }
+    }
+
+    /**
+     * Serve as an ACP stdio server. The editor spawns this process and drives it through
+     * JSON-RPC; stdout becomes a protocol stream (logging must go to stderr).
+     *
+     * <p>Wires a {@link StreamingAcpBridge} that forwards live {@link ToolCallLogger}
+     * events as ACP {@code tool_call_start} / {@code tool_call_complete} updates so the
+     * editor's tool-call cards show what the assistant is doing in real time.
+     */
+    private void runAcpServer(AssistantSession session) {
+        try {
+            StreamingAcpBridge bridge = makeToolEventBridge(session);
+            DefaultAcpAgent acpAgent =
+                    new DefaultAcpAgent(
+                            session.agent(),
+                            new io.kairo.acp.server.AcpSessionManager(),
+                            new AcpImplementation("kairo-assistant", "0.1.0"),
+                            AcpCapabilities.textOnly(),
+                            bridge);
+            new AcpStdioServer(acpAgent).serve();
+        } catch (Exception e) {
+            System.err.println("ACP server failed: " + e.getMessage());
+        } finally {
+            session.stop();
+        }
+    }
+
+    /**
+     * Build a streaming bridge that forwards ToolCallLogger events to the editor as ACP tool-
+     * call cards. Returns null when the session's tool executor isn't a ToolCallLogger; the ACP
+     * server then falls back to single-chunk mode.
+     */
+    private StreamingAcpBridge makeToolEventBridge(AssistantSession session) {
+        ToolExecutor te = session.toolExecutor();
+        if (!(te instanceof ToolCallLogger logger)) return null;
+        return (sid, sink) -> {
+            java.util.function.Consumer<ToolCallLogger.ToolCallRecord> listener =
+                    record -> {
+                        String callId =
+                                record.toolName() + "-" + record.timestamp().toEpochMilli();
+                        sink.accept(
+                                new AcpSessionUpdate.ToolCallStart(
+                                        sid, callId, record.toolName(), java.util.Map.of()));
+                        sink.accept(
+                                new AcpSessionUpdate.ToolCallComplete(
+                                        sid,
+                                        callId,
+                                        record.success(),
+                                        record.success()
+                                                ? "(" + record.durationMs() + " ms)"
+                                                : record.error()));
+                    };
+            logger.addListener(listener);
+            return () -> logger.removeListener(listener);
+        };
     }
 
     /**
