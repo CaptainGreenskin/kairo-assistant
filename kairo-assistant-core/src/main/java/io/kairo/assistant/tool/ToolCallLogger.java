@@ -66,6 +66,16 @@ public class ToolCallLogger implements ToolExecutor {
                 });
     }
 
+    // Forward streaming capability from the wrapped executor. Without this
+    // override the interface default (false) wins, and ReasoningPhase falls
+    // back to non-streaming mode — which kills per-token text deltas all the
+    // way to the chat UI. Same applies to any other capability flag a future
+    // executor might expose.
+    @Override
+    public boolean supportsStreaming() {
+        return delegate.supportsStreaming();
+    }
+
     private void record(String toolName, long startMs, ToolResult result) {
         long durationMs = System.currentTimeMillis() - startMs;
         totalCalls.incrementAndGet();

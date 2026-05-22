@@ -22,7 +22,7 @@ class CronControllerTest {
     void setUp() {
         cronScheduler = new InMemoryCronScheduler();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        controller = new CronController(session, EventBroadcaster.noop());
+        controller = new CronController(session, EventBroadcaster.noop(), TestFixtures.noopDashboard());
     }
 
     @Test
@@ -92,7 +92,7 @@ class CronControllerTest {
     void createBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        var broadcastingController = new CronController(session, events::add);
+        var broadcastingController = new CronController(session, events::add, TestFixtures.noopDashboard());
 
         broadcastingController.create(Map.of("cron", "0 9 * * *", "prompt", "test"));
 
@@ -105,7 +105,7 @@ class CronControllerTest {
     void deleteBroadcastsEvent() {
         var events = new CopyOnWriteArrayList<Map<String, Object>>();
         var session = TestFixtures.defaultSession(new TestFixtures.StubToolExecutor(), cronScheduler);
-        var broadcastingController = new CronController(session, events::add);
+        var broadcastingController = new CronController(session, events::add, TestFixtures.noopDashboard());
 
         var created = broadcastingController.create(Map.of("cron", "0 9 * * *", "prompt", "test"));
         String id = (String) created.get("id");
@@ -145,8 +145,12 @@ class CronControllerTest {
     void triggerFiresOutsideSchedule() {
         var created = controller.create(Map.of("cron", "0 0 1 1 *", "prompt", "new year"));
         String id = (String) created.get("id");
+        // trigger is fire-and-forget now (the underlying scheduler call can block on
+        // the agent for tens of seconds); the request returns "triggering" and the
+        // actual fire happens on a background thread. See CronController for why.
         var result = controller.trigger(id);
-        assertEquals("triggered", result.get("status"));
+        assertEquals("triggering", result.get("status"));
+        assertEquals(id, result.get("id"));
     }
 
     @Test

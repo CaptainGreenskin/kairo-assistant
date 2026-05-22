@@ -1,12 +1,18 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ */
 package io.kairo.assistant.server;
 
-import io.kairo.api.channel.ChannelAck;
-import io.kairo.api.channel.ChannelIdentity;
-import io.kairo.api.channel.ChannelMessage;
+import io.kairo.api.gateway.DeliveryTarget;
+import io.kairo.api.gateway.SendResult;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.channel.ChannelGateway;
 import io.kairo.assistant.channel.DingTalkChannel;
 import io.kairo.assistant.channel.FeishuChannel;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,97 +23,172 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+/**
+ * REST surface for the Console "Channels" tab. Backed by the new {@code io.kairo.api.gateway}
+ * SPI — each channel is a {@link io.kairo.api.gateway.Channel} implementation with a
+ * {@link ChannelGateway} wrapper bridging inbound → agent → outbound.
+ *
+ * <p>Endpoints:
+ * <ul>
+ *   <li>{@code GET /api/channels} — list configured + available channels
+ *   <li>{@code POST /api/channels/dingtalk/webhook} — receive DingTalk inbound
+ *   <li>{@code POST /api/channels/feishu/webhook} — receive Feishu inbound
+ *   <li>{@code POST /api/channels/{id}/send} — send arbitrary text outbound via a configured channel
+ *   <li>{@code GET /api/channels/{id}/recent} — last 50 inbound + outbound messages (in-memory)
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/channels")
 public class ChannelController {
 
+    private static final int RECENT_LIMIT = 50;
+
     private final AssistantSession session;
     private final Map<String, ChannelGateway> gateways = new ConcurrentHashMap<>();
+    private final Map<String, Object> channels = new ConcurrentHashMap<>();
+    private final Map<String, Deque<RecentMessage>> recent = new ConcurrentHashMap<>();
 
     public ChannelController(AssistantSession session) {
         this.session = session;
     }
 
+    private record RecentMessage(
+            String direction,
+            String destination,
+            String content,
+            long timestampMillis,
+            boolean success) {}
+
+    private synchronized void recordRecent(
+            String channelId,
+            String direction,
+            String destination,
+            String content,
+            boolean success) {
+        Deque<RecentMessage> dq =
+                recent.computeIfAbsent(channelId, k -> new ArrayDeque<>(RECENT_LIMIT + 1));
+        dq.addFirst(
+                new RecentMessage(
+                        direction, destination, content, System.currentTimeMillis(), success));
+        while (dq.size() > RECENT_LIMIT) dq.removeLast();
+    }
+
     @GetMapping
     public Map<String, Object> list() {
-        List<Map<String, Object>> channels = gateways.entrySet().stream()
-                .map(e -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", e.getKey());
-                    m.put("status", "active");
-                    return m;
-                }).toList();
-
+        List<Map<String, Object>> channelEntries = new ArrayList<>();
+        for (var entry : gateways.entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", entry.getKey());
+            m.put("status", "active");
+            channelEntries.add(m);
+        }
         String[] supported = {"dingtalk", "feishu", "slack", "telegram", "webhook"};
         for (String s : supported) {
             if (gateways.containsKey(s)) continue;
-            channels = new java.util.ArrayList<>(channels);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", s);
             m.put("status", "available");
-            channels.add(m);
+            channelEntries.add(m);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("total", channels.size());
+        result.put("total", channelEntries.size());
         result.put("active", gateways.size());
-        result.put("channels", channels);
+        result.put("channels", channelEntries);
         return result;
     }
 
     @PostMapping(value = "/dingtalk/webhook", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, Object>> dingTalkWebhook(@RequestBody Map<String, Object> body) {
+    public Map<String, Object> dingTalkWebhook(@RequestBody Map<String, Object> body) {
         String text = extractText(body);
         if (text == null || text.isBlank()) {
-            return Mono.just(Map.of("error", (Object) "empty message text"));
+            return Map.of("error", "empty message text");
         }
         String senderId = String.valueOf(body.getOrDefault("senderId", "unknown"));
-        String senderName = String.valueOf(body.getOrDefault("senderNick", "user"));
-
         DingTalkChannel channel = findOrCreateDingTalk();
-        return channel.injectInbound(senderId, senderName, text)
-                .map(ack -> Map.<String, Object>of("success", ack.success()));
+        channel.injectInbound(senderId, text);
+        recordRecent("dingtalk", "in", senderId, text, true);
+        return Map.of("success", true);
     }
 
     @PostMapping(value = "/feishu/webhook", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, Object>> feishuWebhook(@RequestBody Map<String, Object> body) {
+    public Map<String, Object> feishuWebhook(@RequestBody Map<String, Object> body) {
         String text = extractFeishuText(body);
         if (text == null || text.isBlank()) {
-            return Mono.just(Map.of("error", (Object) "empty message text"));
+            return Map.of("error", "empty message text");
         }
-        String senderId = extractNestedString(body, "event", "sender", "sender_id", "open_id");
+        String senderId =
+                extractNestedString(body, "event", "sender", "sender_id", "open_id");
         if (senderId == null) senderId = "unknown";
-
         FeishuChannel channel = findOrCreateFeishu();
-        return channel.injectInbound(senderId, "user", text)
-                .map(ack -> Map.<String, Object>of("success", ack.success()));
+        channel.injectInbound(senderId, text);
+        recordRecent("feishu", "in", senderId, text, true);
+        return Map.of("success", true);
     }
 
     @PostMapping(value = "/{channelId}/send", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Map<String, Object>> send(
-            @PathVariable String channelId,
-            @RequestBody Map<String, String> body) {
+            @PathVariable String channelId, @RequestBody Map<String, String> body) {
         String dest = body.getOrDefault("destination", "default");
         String content = body.getOrDefault("content", "");
-
         if (content.isBlank()) {
-            return Mono.just(Map.of("error", (Object) "content must not be empty"));
+            return Mono.just(Map.of("error", "content must not be empty"));
         }
-
-        ChannelIdentity identity = ChannelIdentity.of(channelId, dest);
-        ChannelMessage message = ChannelMessage.of(identity, content);
 
         ChannelGateway gateway = gateways.get(channelId);
         if (gateway == null) {
-            return Mono.just(Map.of("error", (Object) "Channel not found: " + channelId));
+            return Mono.just(Map.of("error", "Channel not found: " + channelId));
         }
 
-        return gateway.sendOutbound(message)
-                .map(ack -> Map.<String, Object>of("sent", ack.success()))
-                .onErrorResume(e -> Mono.just(Map.of("error", (Object) e.getMessage())));
+        DeliveryTarget target = DeliveryTarget.chat(channelId, dest);
+        return gateway.sendOutbound(target, content)
+                .map(
+                        (SendResult result) -> {
+                            recordRecent(channelId, "out", dest, content, result.success());
+                            Map<String, Object> r = new LinkedHashMap<>();
+                            r.put("sent", result.success());
+                            if (!result.success()) r.put("error", result.errorMessage());
+                            return r;
+                        })
+                .onErrorResume(
+                        e -> {
+                            recordRecent(channelId, "out", dest, content, false);
+                            return Mono.just(Map.of("error", e.getMessage()));
+                        });
+    }
+
+    /**
+     * Recent inbound + outbound messages for a channel. Backed by an in-memory ring buffer, so
+     * values reset on server restart. Useful for debugging integrations without tailing logs.
+     */
+    @GetMapping(value = "/{channelId}/recent", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> recentMessages(
+            @PathVariable String channelId,
+            @RequestParam(defaultValue = "50") int limit) {
+        Deque<RecentMessage> dq = recent.get(channelId);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (dq != null) {
+            int i = 0;
+            for (RecentMessage m : dq) {
+                if (i++ >= limit) break;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("direction", m.direction());
+                row.put("destination", m.destination());
+                row.put("content", m.content());
+                row.put("timestamp", Instant.ofEpochMilli(m.timestampMillis()).toString());
+                row.put("success", m.success());
+                rows.add(row);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("channelId", channelId);
+        result.put("total", rows.size());
+        result.put("messages", rows);
+        return result;
     }
 
     @SuppressWarnings("unchecked")
@@ -144,30 +225,38 @@ public class ChannelController {
         return current instanceof String s ? s : null;
     }
 
-    private final Map<String, Object> channels = new ConcurrentHashMap<>();
-
     private DingTalkChannel findOrCreateDingTalk() {
-        return (DingTalkChannel) channels.computeIfAbsent("dingtalk", id -> {
-            String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
-            if (webhookUrl == null) webhookUrl = "https://oapi.dingtalk.com/robot/send";
-            String secret = System.getenv("DINGTALK_SECRET");
-            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl, secret);
-            ChannelGateway gw = new ChannelGateway(channel, session.agent());
-            gw.start().subscribe();
-            gateways.put("dingtalk", gw);
-            return channel;
-        });
+        return (DingTalkChannel)
+                channels.computeIfAbsent(
+                        "dingtalk",
+                        id -> {
+                            String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
+                            if (webhookUrl == null) {
+                                webhookUrl = "https://oapi.dingtalk.com/robot/send";
+                            }
+                            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
+                            ChannelGateway gw = new ChannelGateway(channel, session.agent());
+                            gw.start().block();
+                            gateways.put("dingtalk", gw);
+                            return channel;
+                        });
     }
 
     private FeishuChannel findOrCreateFeishu() {
-        return (FeishuChannel) channels.computeIfAbsent("feishu", id -> {
-            String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
-            if (webhookUrl == null) webhookUrl = "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
-            FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
-            ChannelGateway gw = new ChannelGateway(channel, session.agent());
-            gw.start().subscribe();
-            gateways.put("feishu", gw);
-            return channel;
-        });
+        return (FeishuChannel)
+                channels.computeIfAbsent(
+                        "feishu",
+                        id -> {
+                            String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
+                            if (webhookUrl == null) {
+                                webhookUrl =
+                                        "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
+                            }
+                            FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
+                            ChannelGateway gw = new ChannelGateway(channel, session.agent());
+                            gw.start().block();
+                            gateways.put("feishu", gw);
+                            return channel;
+                        });
     }
 }

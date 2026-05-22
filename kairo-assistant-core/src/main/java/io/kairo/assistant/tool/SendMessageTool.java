@@ -1,8 +1,7 @@
 package io.kairo.assistant.tool;
 
-import io.kairo.api.channel.Channel;
-import io.kairo.api.channel.ChannelIdentity;
-import io.kairo.api.channel.ChannelMessage;
+import io.kairo.api.gateway.Channel;
+import io.kairo.api.gateway.DeliveryTarget;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
@@ -81,17 +80,15 @@ public class SendMessageTool implements SyncTool {
                                 + ". Available: " + channels.keySet()));
             }
 
-            ChannelIdentity identity = ChannelIdentity.of(channelId, dest);
-            ChannelMessage msg = ChannelMessage.of(identity, message);
-
-            return channel.sender().send(msg)
-                    .map(ack -> {
-                        if (ack.success()) {
+            DeliveryTarget target = DeliveryTarget.chat(channelId, dest);
+            return channel.send(target, message, null, Map.of())
+                    .map(result -> {
+                        if (result.success()) {
                             return ToolResult.success("send_message",
                                     "Message sent to " + channelId + " successfully");
                         } else {
                             return ToolResult.error("send_message",
-                                    "Failed to send: " + ack.detail());
+                                    "Failed to send: " + result.errorMessage());
                         }
                     })
                     .onErrorResume(e -> Mono.just(ToolResult.error("send_message",

@@ -1,100 +1,70 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ */
 package io.kairo.assistant.channel;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.kairo.api.channel.ChannelAck;
-import io.kairo.api.channel.ChannelInboundHandler;
-import java.util.concurrent.atomic.AtomicReference;
+import io.kairo.api.gateway.ChannelMessage;
+import io.kairo.api.gateway.DeliveryTarget;
+import io.kairo.api.gateway.SendResult;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
-import reactor.core.publisher.Mono;
+import reactor.core.Disposable;
 
 class WebhookChannelTest {
 
     @Test
-    void startAndStop() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        assertThat(channel.id()).isEqualTo("wh-test");
-
-        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
-        channel.start(handler).block();
-        channel.stop().block();
+    void idAndCapabilities() {
+        var ch = new WebhookChannel("hook", "http://127.0.0.1:1/x");
+        assertThat(ch.id()).isEqualTo("hook");
+        assertThat(ch.capabilities()).isNotNull();
     }
 
     @Test
-    void injectInboundWithNoHandler() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        ChannelAck ack = channel.injectInbound("sender1", "test message").block();
-        assertThat(ack).isNotNull();
-        assertThat(ack.success()).isFalse();
+    void connectFlipsRunning() {
+        var ch = new WebhookChannel("hook", "http://127.0.0.1:1/x");
+        assertThat(ch.isRunning()).isFalse();
+        ch.connect().block();
+        assertThat(ch.isRunning()).isTrue();
+        ch.disconnect().block();
+        assertThat(ch.isRunning()).isFalse();
     }
 
     @Test
-    void injectInboundWithHandler() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        AtomicReference<String> received = new AtomicReference<>();
-        ChannelInboundHandler handler = msg -> {
-            received.set(msg.content());
-            return Mono.just(ChannelAck.ok());
-        };
-        channel.start(handler).block();
-        ChannelAck ack = channel.injectInbound("sender1", "webhook test").block();
-        assertThat(ack).isNotNull();
-        assertThat(ack.success()).isTrue();
-        assertThat(received.get()).isEqualTo("webhook test");
-        channel.stop().block();
+    void injectInboundEmitsOnFlux() throws Exception {
+        var ch = new WebhookChannel("hook", "http://127.0.0.1:1/x");
+        ch.connect().block();
+        List<ChannelMessage> got = new CopyOnWriteArrayList<>();
+        Disposable sub = ch.inbound().subscribe(got::add);
+        ch.injectInbound("user-1", "hello");
+        Thread.sleep(30);
+        assertThat(got).hasSize(1);
+        assertThat(got.get(0).text()).isEqualTo("hello");
+        assertThat(got.get(0).source().channelId()).isEqualTo("hook");
+        sub.dispose();
+        ch.disconnect().block();
     }
 
     @Test
-    void senderFailsWhenStopped() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        ChannelAck ack = channel.sender().send(
-                io.kairo.api.channel.ChannelMessage.of(
-                        io.kairo.api.channel.ChannelIdentity.of("wh-test", "dest"),
-                        "msg")).block();
-        assertThat(ack).isNotNull();
-        assertThat(ack.success()).isFalse();
+    void sendBeforeConnectFails() {
+        var ch = new WebhookChannel("hook", "http://127.0.0.1:1/x");
+        SendResult r = ch.send(DeliveryTarget.chat("hook", "d"), "x", null, Map.of()).block();
+        assertThat(r.success()).isFalse();
+        assertThat(r.failureMode()).isEqualTo(SendResult.FailureMode.UNAVAILABLE);
     }
 
     @Test
-    void doubleStartThrows() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
-        channel.start(handler).block();
-        try {
-            channel.start(handler).block();
-            assertThat(true).as("should have thrown").isFalse();
-        } catch (IllegalStateException e) {
-            assertThat(e.getMessage()).contains("already started");
-        } finally {
-            channel.stop().block();
-        }
-    }
-
-    @Test
-    void injectInboundWithAttributes() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        AtomicReference<String> received = new AtomicReference<>();
-        ChannelInboundHandler handler = msg -> {
-            received.set(msg.content());
-            return Mono.just(ChannelAck.ok());
-        };
-        channel.start(handler).block();
-        ChannelAck ack = channel.injectInbound("s1", "attr msg",
-                java.util.Map.of("key", "val")).block();
-        assertThat(ack.success()).isTrue();
-        assertThat(received.get()).isEqualTo("attr msg");
-        channel.stop().block();
-    }
-
-    @Test
-    void stopAndRestartWorks() {
-        WebhookChannel channel = new WebhookChannel("wh-test", "http://localhost:9999/webhook");
-        ChannelInboundHandler handler = msg -> Mono.just(ChannelAck.ok());
-        channel.start(handler).block();
-        channel.stop().block();
-        channel.start(handler).block();
-        ChannelAck ack = channel.injectInbound("s1", "restarted").block();
-        assertThat(ack.success()).isTrue();
-        channel.stop().block();
+    void sendToUnreachableHostReturnsTransientFailure() {
+        var ch = new WebhookChannel("hook", "http://127.0.0.1:1/x");
+        ch.connect().block();
+        SendResult r =
+                ch.send(DeliveryTarget.chat("hook", "d"), "msg", null, Map.of())
+                        .block(java.time.Duration.ofSeconds(15));
+        assertThat(r.success()).isFalse();
+        assertThat(r.failureMode()).isEqualTo(SendResult.FailureMode.TRANSIENT);
+        ch.disconnect().block();
     }
 }

@@ -6,6 +6,10 @@ import io.kairo.assistant.agent.AssistantSession;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,12 +28,33 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/cron")
 public class CronController {
 
+    private static final Logger log = LoggerFactory.getLogger(CronController.class);
+
     private final AssistantSession session;
     private final EventBroadcaster broadcaster;
+    private final DashboardEventPublisher dashboard;
 
-    public CronController(AssistantSession session, EventBroadcaster broadcaster) {
+    /**
+     * Fire-and-forget thread pool for {@link #trigger(String)} — the underlying
+     * {@code CronScheduler.trigger()} call invokes the agent synchronously and can take
+     * tens of seconds (or hang forever with a broken model key). We refuse to block
+     * the request thread on that.
+     */
+    private final ExecutorService triggerPool =
+            Executors.newCachedThreadPool(
+                    r -> {
+                        Thread t = new Thread(r, "kairo-cron-trigger");
+                        t.setDaemon(true);
+                        return t;
+                    });
+
+    public CronController(
+            AssistantSession session,
+            EventBroadcaster broadcaster,
+            DashboardEventPublisher dashboard) {
         this.session = session;
         this.broadcaster = broadcaster;
+        this.dashboard = dashboard;
     }
 
     @GetMapping
@@ -77,8 +102,24 @@ public class CronController {
             return Map.of("error", e.getMessage());
         }
         broadcaster.broadcast(Map.of("type", "cron_created", "id", task.id(), "cron", task.cron()));
+        dashboard.cron("cron.created", task.id());
         Map<String, Object> result = new LinkedHashMap<>(toView(task));
         result.put("status", "created");
+        // The CronScheduler SPI doesn't accept a caller-supplied id — it always
+        // generates its own. Surface this when the user passed one so they
+        // don't issue subsequent DELETE/PUT against an id that was silently
+        // dropped (callers used to see "task not found" with no explanation).
+        Object requestedId = body.get("id");
+        if (requestedId instanceof String s
+                && !s.isBlank()
+                && !s.equals(task.id())) {
+            result.put(
+                    "warning",
+                    "Caller-supplied id '" + s
+                            + "' was ignored; scheduler assigned '"
+                            + task.id()
+                            + "'. Use the returned id for follow-up operations.");
+        }
         return result;
     }
 
@@ -94,7 +135,10 @@ public class CronController {
         try {
             return session.cronScheduler()
                     .edit(taskId, newCron, newPrompt)
-                    .map(this::toView)
+                    .map(t -> {
+                        dashboard.cron("cron.edited", t.id());
+                        return toView(t);
+                    })
                     .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
         } catch (IllegalArgumentException e) {
             return Map.of("error", e.getMessage());
@@ -105,7 +149,10 @@ public class CronController {
     public Map<String, Object> pause(@PathVariable String taskId) {
         return session.cronScheduler()
                 .pause(taskId)
-                .map(this::toView)
+                .map(t -> {
+                    dashboard.cron("cron.paused", t.id());
+                    return toView(t);
+                })
                 .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
     }
 
@@ -113,16 +160,35 @@ public class CronController {
     public Map<String, Object> resume(@PathVariable String taskId) {
         return session.cronScheduler()
                 .resume(taskId)
-                .map(this::toView)
+                .map(t -> {
+                    dashboard.cron("cron.resumed", t.id());
+                    return toView(t);
+                })
                 .orElseGet(() -> Map.of("error", "task not found", "id", taskId));
     }
 
     @PostMapping("/{taskId}/trigger")
     public Map<String, Object> trigger(@PathVariable String taskId) {
-        boolean fired = session.cronScheduler().trigger(taskId);
-        return fired
-                ? Map.of("status", "triggered", "id", taskId)
-                : Map.of("error", "task not found", "id", taskId);
+        // Pre-check existence on the request thread (cheap) so we can return 404-style
+        // feedback to the UI immediately; the actual fire happens on a background pool.
+        boolean exists =
+                session.cronScheduler().list().stream().anyMatch(t -> t.id().equals(taskId));
+        if (!exists) {
+            return Map.of("error", "task not found", "id", taskId);
+        }
+        dashboard.cron("cron.triggering", taskId);
+        triggerPool.submit(
+                () -> {
+                    try {
+                        boolean fired = session.cronScheduler().trigger(taskId);
+                        if (fired) {
+                            dashboard.cron("cron.triggered", taskId);
+                        }
+                    } catch (Throwable e) {
+                        log.warn("Cron trigger failed for {}: {}", taskId, e.toString());
+                    }
+                });
+        return Map.of("status", "triggering", "id", taskId);
     }
 
     @DeleteMapping("/{taskId}")
@@ -130,6 +196,7 @@ public class CronController {
         boolean deleted = session.cronScheduler().delete(taskId);
         if (deleted) {
             broadcaster.broadcast(Map.of("type", "cron_deleted", "id", taskId));
+            dashboard.cron("cron.deleted", taskId);
             return Map.of("status", "deleted", "id", taskId);
         }
         return Map.of("error", "task not found", "id", taskId);

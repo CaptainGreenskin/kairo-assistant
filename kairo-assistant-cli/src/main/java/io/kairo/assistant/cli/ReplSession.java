@@ -329,7 +329,7 @@ public class ReplSession {
         w.printf("  Tools:       %d registered%n", session.toolRegistry().getAll().size());
         w.printf("  Skills:      %d registered%n", session.skillRegistry().list().size());
         w.printf("  Plugins:     %d loaded%n",
-                session.pluginManager() != null ? session.pluginManager().plugins().size() : 0);
+                session.pluginManager() != null ? session.pluginManager().list().size() : 0);
         w.printf("  History:     %d exchanges%n", history.size() / 2);
         w.printf("  Verbose:     %s%n", verbose.get());
         w.println();
@@ -2067,7 +2067,7 @@ public class ReplSession {
         w.printf("%n  Agent:%n");
         w.printf("    Tools:          %d%n", session.toolRegistry().getAll().size());
         w.printf("    Skills:         %d%n", session.skillRegistry().list().size());
-        w.printf("    Plugins:        %d%n", session.pluginManager().plugins().size());
+        w.printf("    Plugins:        %d%n", session.pluginManager().list().size());
 
         var sessions = conversationStore.listSessions();
         w.printf("%n  History:%n");
@@ -2765,7 +2765,7 @@ public class ReplSession {
         w.println("Tools:     " + session.toolRegistry().getAll().size()
                 + (focusCategory != null ? " (focus: " + focusCategory.name().toLowerCase() + ")" : ""));
         w.println("Skills:    " + session.skillRegistry().list().size());
-        w.println("Plugins:   " + session.pluginManager().plugins().size());
+        w.println("Plugins:   " + session.pluginManager().list().size());
         long uptimeSec = java.time.Duration.between(sessionStartTime, java.time.Instant.now()).toSeconds();
         w.println("Uptime:    " + formatUptime(uptimeSec));
         w.println("Session:   " + (conversationStore.currentSessionId() != null
@@ -2813,7 +2813,7 @@ public class ReplSession {
                 skillCount + " loaded", "no skills loaded");
 
         // Plugins
-        int pluginCount = session.pluginManager().plugins().size();
+        int pluginCount = session.pluginManager().list().size();
         printCheck(w, "Plugins", true,
                 pluginCount + " loaded", "");
 
@@ -2983,7 +2983,7 @@ public class ReplSession {
         w.printf("  Tools:       %d%s%n", session.toolRegistry().getAll().size(),
                 focusCategory != null ? " (focus: " + focusCategory.name().toLowerCase() + ")" : "");
         w.printf("  Skills:      %d%n", session.skillRegistry().list().size());
-        w.printf("  Plugins:     %d%n", session.pluginManager().plugins().size());
+        w.printf("  Plugins:     %d%n", session.pluginManager().list().size());
         w.printf("  Cron tasks:  %d%n", scheduledTasks.size());
 
         w.println();

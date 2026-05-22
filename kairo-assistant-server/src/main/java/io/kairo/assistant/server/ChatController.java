@@ -5,8 +5,10 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.assistant.agent.AssistantSession;
 import io.kairo.assistant.gateway.SessionKey;
 import io.kairo.assistant.gateway.UnifiedGateway;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +24,24 @@ import reactor.core.publisher.Sinks;
 public class ChatController {
 
     private static final int MAX_TITLE_LENGTH = 50;
+
+    // Total wall-clock cap on a single chat turn (LLM call + any tool loops).
+    // If the upstream model hangs (network stall, broken endpoint), the stream
+    // emits an error event and closes, so the UI clears its "●…" loader
+    // instead of waiting forever. Override via env if the model legitimately
+    // takes longer (e.g. very large outputs or long tool chains).
+    private static final Duration CHAT_STREAM_TIMEOUT = Duration.ofSeconds(
+            parsePositiveLong(System.getenv("KAIRO_CHAT_STREAM_TIMEOUT_SECONDS"), 300L));
+
+    private static long parsePositiveLong(String s, long fallback) {
+        if (s == null || s.isBlank()) return fallback;
+        try {
+            long v = Long.parseLong(s.trim());
+            return v > 0 ? v : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
 
     private final AssistantSession session;
     private final UnifiedGateway gateway;
@@ -77,12 +97,17 @@ public class ChatController {
                         "error", e.getMessage())));
     }
 
-    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    // Spring's SSE encoder frames each Flux<String> element as "data:<value>\n\n"
+    // itself, so emit only the JSON payload here — don't pre-frame. Explicit
+    // UTF-8 charset is required: text/event-stream in servlet stack defaults to
+    // ISO-8859-1, which mangles non-ASCII (e.g. Chinese) content.
+    @PostMapping(value = "/chat/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public Flux<String> chatStream(
             @RequestBody ChatRequest request,
             @RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
         if (request.message() == null || request.message().isBlank()) {
-            return Flux.just("data: {\"type\":\"error\",\"message\":\"message is required\"}\n\n");
+            return Flux.just("{\"type\":\"error\",\"message\":\"message is required\"}");
         }
 
         String clientId = sessionId != null ? sessionId : UUID.randomUUID().toString().substring(0, 8);
@@ -91,22 +116,31 @@ public class ChatController {
         String subId = "chat-stream-" + clientId + "-" + System.nanoTime();
 
         sessionDeltaRouter.subscribe(key, subId, delta ->
-                sink.tryEmitNext("data: {\"type\":\"delta\",\"content\":\"" + JsonEscape.escape(delta) + "\"}\n\n"));
+                sink.tryEmitNext("{\"type\":\"delta\",\"content\":\"" + JsonEscape.escape(delta) + "\"}"));
 
         Msg input = Msg.of(MsgRole.USER, request.message());
         gateway.route(key, input)
+                .timeout(CHAT_STREAM_TIMEOUT)
                 .doOnSuccess(response -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
                     if (response != null) {
-                        sink.tryEmitNext("data: {\"type\":\"response\",\"content\":\"" + JsonEscape.escape(response.text()) + "\"}\n\n");
+                        sink.tryEmitNext("{\"type\":\"response\",\"content\":\"" + JsonEscape.escape(response.text()) + "\"}");
                     }
-                    sink.tryEmitNext("data: {\"type\":\"done\"}\n\n");
+                    sink.tryEmitNext("{\"type\":\"done\"}");
                     sink.tryEmitComplete();
                 })
                 .doOnError(e -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
-                    String errMsg = e.getMessage() != null ? e.getMessage() : "unknown error";
-                    sink.tryEmitNext("data: {\"type\":\"error\",\"message\":\"" + JsonEscape.escape(errMsg) + "\"}\n\n");
+                    String errMsg;
+                    if (e instanceof TimeoutException) {
+                        errMsg = "Upstream model did not respond within "
+                                + CHAT_STREAM_TIMEOUT.toSeconds() + "s";
+                    } else {
+                        errMsg = e.getMessage() != null
+                                ? e.getClass().getSimpleName() + ": " + e.getMessage()
+                                : e.getClass().getSimpleName();
+                    }
+                    sink.tryEmitNext("{\"type\":\"error\",\"message\":\"" + JsonEscape.escape(errMsg) + "\"}");
                     sink.tryEmitComplete();
                 })
                 .subscribe();

@@ -4,17 +4,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Aligns with the legacy index.html dark theme palette.
-        bg: "#1a1a2e",
-        surface: "#16213e",
-        primary: "#0f3460",
-        accent: "#e94560",
-        "accent-hover": "#d63850",
-        text: "#eaeaea",
-        "text-dim": "#a0a0a0",
-        border: "#2a3a5c",
-        success: "#4caf50",
-        warn: "#ff9800",
+        // All colors bind to CSS variables so themes can swap them at runtime.
+        // The palette names stay the same as the original hard-coded version so
+        // existing components (bg-surface, text-text-dim, border-border, etc.)
+        // keep working without edits.
+        bg: "var(--kc-bg)",
+        surface: "var(--kc-surface)",
+        primary: "var(--kc-primary)",
+        accent: "var(--kc-accent)",
+        "accent-hover": "var(--kc-accent-hover)",
+        text: "var(--kc-text)",
+        "text-dim": "var(--kc-text-dim)",
+        border: "var(--kc-border)",
+        success: "var(--kc-success)",
+        warn: "var(--kc-warn)",
       },
     },
   },

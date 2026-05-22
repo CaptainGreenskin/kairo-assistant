@@ -59,10 +59,16 @@ public class KairoAssistantServer {
     @Bean
     public UnifiedGateway unifiedGateway(AssistantConfig config,
                                          SessionAwareDeltaRouter deltaRouter) {
+        // Per-key agent factory: wire a session-scoped delta consumer so each
+        // pooled agent's streaming tokens flow into the right SSE/WS channel.
+        // Without this the chat SSE saw zero `delta` events and the UI sat
+        // idle until the model finished — see streaming verification in the
+        // audit notes.
         AgentSessionPool pool = new AgentSessionPool(
                 config.sessionPoolSize(),
                 config.sessionIdleTtl(),
-                key -> AssistantAgentFactory.create(config).agent(),
+                key -> AssistantAgentFactory.createPooledAgent(
+                        config, deltaRouter.consumerFor(key)),
                 evictedKey -> deltaRouter.removeSession(evictedKey));
         int maxConcurrent = safeParseInt(
                 System.getenv().getOrDefault("KAIRO_MAX_CONCURRENT_RUNS", "16"), 16);

@@ -1,185 +1,33 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ */
 package io.kairo.assistant.channel;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.kairo.api.channel.Channel;
-import io.kairo.api.channel.ChannelAck;
-import io.kairo.api.channel.ChannelFailureMode;
-import io.kairo.api.channel.ChannelIdentity;
-import io.kairo.api.channel.ChannelInboundHandler;
-import io.kairo.api.channel.ChannelMessage;
-import io.kairo.api.channel.ChannelOutboundSender;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Mono;
+import io.kairo.api.gateway.DeliveryTarget;
 
 /**
- * DingTalk channel implementation using the DingTalk Robot Outgoing webhook model.
+ * DingTalk custom-bot webhook channel — text-only outbound. Inbound from the controller via
+ * {@code WebhookChannel.injectInbound}.
  *
- * <p>Inbound: receives POST from DingTalk webhook callback (not implemented here — needs an HTTP
- * server or Spring controller to forward messages). Use {@link #injectInbound(String, String,
- * String)} to programmatically push messages.
+ * <p>Outbound shape matches DingTalk's bot API: {@code {"msgtype":"text","text":{"content":...}}}.
  *
- * <p>Outbound: sends messages via DingTalk Robot webhook URL. Supports optional HMAC-SHA256
- * signing when a secret is provided.
+ * <p>Note: the production-grade DingTalk integration lives in {@code kairo-channel-dingtalk}
+ * (signed-webhook, dedupe, mapper). This class is the lightweight assistant-internal variant used
+ * by the {@code /api/channels} REST surface.
  */
-public class DingTalkChannel implements Channel {
-
-    private static final Logger log = LoggerFactory.getLogger(DingTalkChannel.class);
-
-    private final String channelId;
-    private final String webhookUrl;
-    private final String secret;
-    private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient httpClient;
-    private final AtomicBoolean running = new AtomicBoolean(false);
-    private final AtomicReference<ChannelInboundHandler> handlerRef = new AtomicReference<>();
+public class DingTalkChannel extends WebhookChannel {
 
     public DingTalkChannel(String channelId, String webhookUrl) {
-        this(channelId, webhookUrl, null);
-    }
-
-    public DingTalkChannel(String channelId, String webhookUrl, String secret) {
-        this.channelId = channelId;
-        this.webhookUrl = webhookUrl;
-        this.secret = secret;
-        this.httpClient =
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    }
-
-    DingTalkChannel(String channelId, String webhookUrl, String secret, HttpClient httpClient) {
-        this.channelId = channelId;
-        this.webhookUrl = webhookUrl;
-        this.secret = secret;
-        this.httpClient = httpClient;
+        super(channelId, webhookUrl);
     }
 
     @Override
-    public String id() {
-        return channelId;
-    }
-
-    @Override
-    public Mono<Void> start(ChannelInboundHandler handler) {
-        return Mono.fromRunnable(() -> {
-            if (!running.compareAndSet(false, true)) {
-                throw new IllegalStateException("DingTalk channel already started");
-            }
-            handlerRef.set(handler);
-            log.info("DingTalk channel [{}] started", channelId);
-        });
-    }
-
-    @Override
-    public Mono<Void> stop() {
-        return Mono.fromRunnable(() -> {
-            running.set(false);
-            handlerRef.set(null);
-            log.info("DingTalk channel [{}] stopped", channelId);
-        });
-    }
-
-    @Override
-    public ChannelOutboundSender sender() {
-        return message -> {
-            if (!running.get()) {
-                return Mono.just(
-                        ChannelAck.fail(ChannelFailureMode.SEND_FAILED, "Channel not running"));
-            }
-            return Mono.fromCallable(() -> sendToDingTalk(message));
-        };
-    }
-
-    /**
-     * Programmatically inject an inbound message (for webhook callback integration).
-     */
-    public Mono<ChannelAck> injectInbound(String senderId, String senderName, String text) {
-        ChannelInboundHandler handler = handlerRef.get();
-        if (handler == null) {
-            return Mono.just(
-                    ChannelAck.fail(ChannelFailureMode.SEND_FAILED, "No handler registered"));
-        }
-
-        ChannelIdentity identity =
-                new ChannelIdentity(
-                        channelId,
-                        senderId,
-                        Map.of("senderName", senderName));
-        ChannelMessage message = ChannelMessage.of(identity, text);
-        return handler.onInbound(message);
-    }
-
-    private ChannelAck sendToDingTalk(ChannelMessage message) {
-        try {
-            ObjectNode body = mapper.createObjectNode();
-            body.put("msgtype", "text");
-            ObjectNode text = body.putObject("text");
-            text.put("content", message.content());
-
-            String url = buildSignedUrl();
-
-            HttpRequest request =
-                    HttpRequest.newBuilder()
-                            .uri(URI.create(url))
-                            .header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofString(
-                                    mapper.writeValueAsString(body)))
-                            .timeout(Duration.ofSeconds(10))
-                            .build();
-
-            HttpResponse<String> resp =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (resp.statusCode() == 200) {
-                JsonNode respBody = mapper.readTree(resp.body());
-                int errcode = respBody.path("errcode").asInt(-1);
-                if (errcode == 0) {
-                    return ChannelAck.ok();
-                }
-                return ChannelAck.fail(
-                        ChannelFailureMode.REJECTED,
-                        "DingTalk errcode=" + errcode + ": " + respBody.path("errmsg").asText());
-            }
-            return ChannelAck.fail(
-                    ChannelFailureMode.SEND_FAILED,
-                    "HTTP " + resp.statusCode());
-        } catch (Exception e) {
-            log.error("Failed to send to DingTalk", e);
-            return ChannelAck.fail(ChannelFailureMode.SEND_FAILED, e.getMessage());
-        }
-    }
-
-    private String buildSignedUrl() {
-        if (secret == null || secret.isBlank()) {
-            return webhookUrl;
-        }
-        try {
-            long timestamp = System.currentTimeMillis();
-            String stringToSign = timestamp + "\n" + secret;
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] signData = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
-            String sign = URLEncoder.encode(
-                    java.util.Base64.getEncoder().encodeToString(signData),
-                    StandardCharsets.UTF_8);
-            String separator = webhookUrl.contains("?") ? "&" : "?";
-            return webhookUrl + separator + "timestamp=" + timestamp + "&sign=" + sign;
-        } catch (Exception e) {
-            log.warn("Failed to compute DingTalk sign, sending without signature: {}", e.getMessage());
-            return webhookUrl;
-        }
+    protected ObjectNode buildPayload(DeliveryTarget target, String content) {
+        ObjectNode body = mapper().createObjectNode();
+        body.put("msgtype", "text");
+        ObjectNode text = body.putObject("text");
+        text.put("content", content == null ? "" : content);
+        return body;
     }
 }

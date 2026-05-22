@@ -48,7 +48,7 @@ class ConversationControllerTest {
 
     @Test
     void listEmptyReturnsZero() {
-        var result = controller.list();
+        var result = controller.list(100, 0);
         assertEquals(0, result.get("total"));
     }
 
@@ -58,7 +58,7 @@ class ConversationControllerTest {
         store.startSession();
         store.appendMessage("user", "hello");
 
-        var result = controller.list();
+        var result = controller.list(100, 0);
         int total = (int) result.get("total");
         assertTrue(total >= 1);
         var conversations = (java.util.List<?>) result.get("conversations");

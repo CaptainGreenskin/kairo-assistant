@@ -139,7 +139,7 @@ public record AssistantConfig(
             }
             return switch (provider) {
                 case "glm" -> "https://open.bigmodel.cn/api/paas/v4";
-                case "minimax" -> "https://api.minimax.chat/v1";
+                case "minimax" -> "https://api.minimaxi.com/v1";
                 case "deepseek" -> "https://api.deepseek.com/v1";
                 default -> null;
             };
