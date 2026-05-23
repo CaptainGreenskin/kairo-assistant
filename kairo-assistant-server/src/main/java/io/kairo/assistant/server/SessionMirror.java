@@ -1,7 +1,7 @@
 package io.kairo.assistant.server;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.core.session.SessionKey;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;

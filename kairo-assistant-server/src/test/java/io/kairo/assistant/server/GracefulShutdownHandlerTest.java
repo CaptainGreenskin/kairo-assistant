@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.agent.Agent;
 import io.kairo.assistant.agent.AssistantConfig;
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.core.session.UnifiedGateway;
 import io.kairo.api.plugin.PluginManager;
 import io.kairo.assistant.skill.AssistantSkills;
 import io.kairo.api.cron.CronScheduler;

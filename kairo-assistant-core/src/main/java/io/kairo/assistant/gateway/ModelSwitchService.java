@@ -1,5 +1,8 @@
 package io.kairo.assistant.gateway;
 
+import io.kairo.core.session.UnifiedGateway;
+import io.kairo.core.session.SessionKey;
+
 import io.kairo.api.agent.Agent;
 import io.kairo.assistant.agent.AssistantAgentFactory;
 import io.kairo.assistant.agent.AssistantConfig;

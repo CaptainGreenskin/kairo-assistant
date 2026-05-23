@@ -2,7 +2,7 @@ package io.kairo.assistant.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.core.session.SessionKey;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;

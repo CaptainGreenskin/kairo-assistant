@@ -256,7 +256,20 @@ public class KairoAssistantMain implements Runnable {
     }
 
     public static void main(String[] args) {
+        long t0 = System.nanoTime();
+        boolean trace =
+                "1".equals(System.getenv("KAIRO_PERF_TRACE"))
+                        || "true".equalsIgnoreCase(System.getProperty("kairo.perf.trace"));
+        if (trace) {
+            System.err.printf(
+                    "[perf] main entry  +%dms since JVM start%n",
+                    java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime());
+        }
         int exitCode = new CommandLine(new KairoAssistantMain()).execute(args);
+        if (trace) {
+            long elapsed = (System.nanoTime() - t0) / 1_000_000L;
+            System.err.printf("[perf] main exit  total since main=%dms%n", elapsed);
+        }
         System.exit(exitCode);
     }
 }

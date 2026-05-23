@@ -1,7 +1,7 @@
 package io.kairo.assistant.server;
 
 import io.kairo.assistant.agent.AssistantSession;
-import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.core.session.UnifiedGateway;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.time.Instant;

@@ -42,6 +42,22 @@
             <artifactId>kairo-mcp</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-expert-team</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-security-pii</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>

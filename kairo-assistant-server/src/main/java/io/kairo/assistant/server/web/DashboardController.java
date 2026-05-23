@@ -1,7 +1,7 @@
 package io.kairo.assistant.server.web;
 
-import io.kairo.assistant.gateway.SessionKey;
-import io.kairo.assistant.gateway.UnifiedGateway;
+import io.kairo.core.session.SessionKey;
+import io.kairo.core.session.UnifiedGateway;
 import io.kairo.assistant.goal.Goal;
 import io.kairo.assistant.goal.GoalStore;
 import io.kairo.assistant.security.UserPairing;

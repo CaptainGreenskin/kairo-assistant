@@ -1,5 +1,8 @@
 package io.kairo.assistant.gateway;
 
+import io.kairo.core.session.AgentSessionPool;
+import io.kairo.core.session.SessionKey;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.agent.Agent;

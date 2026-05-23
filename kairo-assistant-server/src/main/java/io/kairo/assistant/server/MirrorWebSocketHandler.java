@@ -2,7 +2,7 @@ package io.kairo.assistant.server;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.core.session.SessionKey;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;

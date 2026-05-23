@@ -1,5 +1,7 @@
 package io.kairo.assistant.agent;
 
+import io.kairo.core.session.AgentSessionPool;
+
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.SubagentRegistry;
 import io.kairo.api.mcp.McpPlugin;
@@ -98,11 +100,26 @@ public final class AssistantAgentFactory {
 
     public static AssistantSession create(AssistantConfig config) {
         Objects.requireNonNull(config, "config");
+        PerfTrace t = PerfTrace.start("AssistantAgentFactory.create");
 
         Path dataPath = Path.of(config.dataDir());
         dataPath.toFile().mkdirs();
 
         MemoryStore memoryStore = new FileMemoryStore(dataPath.resolve("memory"));
+        t.mark("memoryStore");
+
+        // M-F3: Bootstrap kairo-observability. Same SimpleMeterRegistry +
+        // AgentMetrics pattern as kairo-code — gives the assistant runtime
+        // unified Micrometer meters for kairo.agent.calls.* / agents.* without
+        // locking us into any specific exporter. Failure is non-fatal so the
+        // assistant still boots if Micrometer is somehow off the classpath.
+        try {
+            var registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+            io.kairo.core.health.AgentCallObserver.setGlobal(
+                    new io.kairo.observability.AgentMetrics(registry));
+        } catch (Throwable obs) {
+            log.warn("Failed to wire AgentMetrics: {}", obs.getMessage());
+        }
 
         // Late-bound CronFireCallback — the real callback needs an Agent reference (which we
         // can't build until the tool/skill stack is up). Holder lets the scheduler start
@@ -120,6 +137,7 @@ public final class AssistantAgentFactory {
                         .register(io.kairo.cron.HttpCronDelivery.https());
         CronScheduler cronScheduler =
                 new DefaultCronScheduler(cronStore, cronCallback, ZoneId.systemDefault());
+        t.mark("cronScheduler");
 
         DefaultToolRegistry toolRegistry = new DefaultToolRegistry();
         toolRegistry.scan("io.kairo.assistant.tool");
@@ -127,6 +145,7 @@ public final class AssistantAgentFactory {
             log.info("Classpath scan found 0 tools, falling back to explicit registration");
             registerAllTools(toolRegistry);
         }
+        t.mark("toolRegistry(scan+register " + toolRegistry.getAll().size() + ")");
 
         // Wrap with ToolCallLogger so the /api/tools/history endpoint (and the
         // Console's Tool history tab) sees real invocations. The logger is a
@@ -137,8 +156,10 @@ public final class AssistantAgentFactory {
                         new DefaultToolExecutor(toolRegistry, new DefaultPermissionGuard()));
 
         io.kairo.api.model.ModelProvider modelProvider = resolveModelProvider(config);
+        t.mark("modelProvider(" + config.modelProvider() + ")");
 
         SkillRegistry skillRegistry = AssistantSkills.createRegistry();
+        t.mark("skillRegistry(" + skillRegistry.list().size() + ")");
 
         PluginRuntime pluginRuntime =
                 buildPluginRuntime(
@@ -148,6 +169,7 @@ public final class AssistantAgentFactory {
                         config,
                         toolRegistry,
                         toolExecutor);
+        t.mark("pluginRuntime");
 
         ConversationStore conversationStore = new ConversationStore(
                 dataPath.resolve("conversations"));
@@ -186,6 +208,7 @@ public final class AssistantAgentFactory {
 
         Agent agent = buildAgent(config, modelProvider, config.modelName(),
                 toolRegistry, toolExecutor, toolDeps, systemPrompt, memoryStore, hookBridge);
+        t.mark("buildAgent");
 
         // Install the real cron callback: spawn an ephemeral agent per fire (so cron prompts
         // don't pollute the live REPL conversation), honour skill/workdir/no-agent/chain, route
@@ -208,7 +231,7 @@ public final class AssistantAgentFactory {
                         ephemeralAgentSupplier, skillRegistry, cronChain, cronDelivery);
         cronCallbackHolder.set(new PromptInjectionGuard(realCron));
 
-        return new AssistantSession(
+        AssistantSession s = new AssistantSession(
                 agent,
                 toolRegistry,
                 toolExecutor,
@@ -226,6 +249,8 @@ public final class AssistantAgentFactory {
                 pluginRuntime.trustStore(),
                 pluginRuntime.auditLogger(),
                 config);
+        t.done();
+        return s;
     }
 
     public static Agent createAgentWithModel(AssistantConfig baseConfig,
@@ -555,6 +580,30 @@ public final class AssistantAgentFactory {
         if (pluginHookHandler != null) {
             builder = builder.hook(pluginHookHandler);
         }
+
+        // M-F2 + M-F5a: full guardrail chain for the personal assistant.
+        //   - PiiRedactionPolicy (M-F2): redacts secrets in model + tool output
+        //   - DangerousCommandPolicy (M-F5a, was assistant-self-built — now upstream): blocks
+        //     rm -rf / / mkfs / shutdown etc on shell-style tools
+        //   - PathTraversalPolicy (M-F5a): blocks `../` and writes to /etc/passwd etc
+        //   - ToolLoopDetectionPolicy (M-F5a): warns/denies when same (tool, args) fires too
+        //     often within a session
+        // Set KAIRO_PII_REDACTION=off to skip the PII step (debugging only — the dangerous-
+        // command and path-traversal policies stay on regardless).
+        try {
+            var policies = new java.util.ArrayList<io.kairo.api.guardrail.GuardrailPolicy>();
+            if (!"off".equalsIgnoreCase(System.getenv("KAIRO_PII_REDACTION"))) {
+                policies.add(new io.kairo.security.pii.PiiRedactionPolicy());
+            }
+            policies.add(new io.kairo.core.guardrail.policy.DangerousCommandPolicy());
+            policies.add(new io.kairo.core.guardrail.policy.PathTraversalPolicy());
+            policies.add(new io.kairo.core.guardrail.policy.ToolLoopDetectionPolicy());
+            var chain = new io.kairo.core.guardrail.DefaultGuardrailChain(policies);
+            builder = builder.guardrailChain(chain);
+        } catch (Throwable t) {
+            log.warn("Failed to wire guardrail chain: {}", t.getMessage());
+        }
+
         return builder.build();
     }
 
@@ -617,7 +666,7 @@ public final class AssistantAgentFactory {
         String[] toolClasses = {
             "BookmarkTool", "BrowserTool", "CalculatorTool", "CalendarTool",
             "CheckpointTool", "ClarifyTool", "ClipboardTool", "CodeExecuteTool",
-            "ContactsTool", "CronTool", "DelegateTaskTool", "EncodeTool",
+            "ContactsTool", "CronTool", "DelegateTaskTool", "EncodeTool", "ExpertTeamTool",
             "EnvTool", "GitTool", "HttpRequestTool", "ImageGenTool",
             "JsonTool", "ListDirectoryTool", "McpClientTool", "MemorySearchTool",
             "NoteTool", "PatchTool", "ProcessTool", "ProjectTool",

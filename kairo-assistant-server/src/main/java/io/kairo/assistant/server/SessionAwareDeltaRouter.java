@@ -1,6 +1,6 @@
 package io.kairo.assistant.server;
 
-import io.kairo.assistant.gateway.SessionKey;
+import io.kairo.core.session.SessionKey;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
