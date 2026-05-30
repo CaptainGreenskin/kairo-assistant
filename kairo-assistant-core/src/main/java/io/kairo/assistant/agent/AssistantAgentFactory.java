@@ -673,7 +673,7 @@ public final class AssistantAgentFactory {
             "ReadFileTool", "ReminderTool", "ScreenshotTool", "SearchFilesTool",
             "SendMessageTool", "SessionSearchTool", "ShellTool", "SystemInfoTool",
             "TextTool", "TimeTool", "TodoTool", "UserProfileTool",
-            "VisionTool", "VoiceTool", "WeatherTool", "WebFetchTool",
+            "VisionTool", "VoiceTool", "WeatherTool", "WebFetchTool", "WebSearchTool",
             "WorkflowTool", "WriteFileTool"
         };
         for (String name : toolClasses) {
