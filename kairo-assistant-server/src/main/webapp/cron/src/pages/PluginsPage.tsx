@@ -9,7 +9,7 @@ export function PluginsPage() {
     queryKey: ["plugins"],
     queryFn: pluginsApi.list,
   });
-  const plugins = (data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const plugins = (data?.items ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["plugins"] });
 

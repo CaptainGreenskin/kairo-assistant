@@ -39,12 +39,22 @@ public class SseController {
     @GetMapping(value = "/connect", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> connect(@RequestParam(defaultValue = "default") String clientId) {
         Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer(256);
-        connections.put(clientId, sink);
+        if (connections.putIfAbsent(clientId, sink) != null) {
+            // Id already in use — refuse without evicting the live connection's sink.
+            return Flux.just(sseEvent("error",
+                    Map.of("message", "clientId already connected: " + clientId)));
+        }
 
         sink.tryEmitNext(sseEvent("connected", Map.of("clientId", clientId)));
 
         return sink.asFlux()
-                .doFinally(signal -> connections.remove(clientId));
+                .doFinally(signal -> {
+                    connections.remove(clientId, sink);
+                    // Client went away — stop any in-flight run and drop its delta subs.
+                    SessionKey key = SessionKey.of("sse", clientId);
+                    gateway.interrupt(key);
+                    sessionDeltaRouter.removeSession(key);
+                });
     }
 
     @PostMapping("/send")
@@ -66,23 +76,22 @@ public class SseController {
 
         SessionKey key = SessionKey.of("sse", clientId);
         String subId = "sse-" + clientId + "-" + System.nanoTime();
-        sessionDeltaRouter.subscribe(key, subId, delta -> {
-            String escaped = JsonEscape.escape(delta);
-            sink.tryEmitNext(sseEvent("delta", Map.of("content", escaped)));
-        });
+        sessionDeltaRouter.subscribe(key, subId, delta ->
+                sink.tryEmitNext(sseEvent("delta", Map.of("content", delta))));
 
         Msg input = Msg.of(MsgRole.USER, message);
         gateway.route(key, input)
                 .doOnSuccess(response -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
                     if (response != null) {
-                        sink.tryEmitNext(sseEvent("response", Map.of("content", JsonEscape.escape(response.text()))));
+                        sink.tryEmitNext(sseEvent("response", Map.of("content", response.text())));
                     }
                     sink.tryEmitNext(sseEvent("done", Map.of()));
                 })
                 .doOnError(e -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
-                    sink.tryEmitNext(sseEvent("error", Map.of("message", JsonEscape.escape(e.getMessage()))));
+                    String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                    sink.tryEmitNext(sseEvent("error", Map.of("message", msg)));
                 })
                 .subscribe();
 
@@ -119,9 +128,10 @@ public class SseController {
 
     private String sseEvent(String type, Map<String, String> data) {
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"type\":\"").append(type).append("\"");
+        sb.append("{\"type\":\"").append(JsonEscape.escape(type)).append("\"");
         for (var entry : data.entrySet()) {
-            sb.append(",\"").append(entry.getKey()).append("\":\"").append(entry.getValue()).append("\"");
+            sb.append(",\"").append(JsonEscape.escape(entry.getKey())).append("\":\"")
+                    .append(JsonEscape.escape(entry.getValue())).append("\"");
         }
         sb.append("}");
         return "data: " + sb + "\n\n";

@@ -98,7 +98,7 @@ public class ChannelController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("total", channelEntries.size());
         result.put("active", gateways.size());
-        result.put("channels", channelEntries);
+        result.put("items", channelEntries);
         return result;
     }
 
@@ -187,7 +187,7 @@ public class ChannelController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("channelId", channelId);
         result.put("total", rows.size());
-        result.put("messages", rows);
+        result.put("items", rows);
         return result;
     }
 
@@ -225,38 +225,35 @@ public class ChannelController {
         return current instanceof String s ? s : null;
     }
 
-    private DingTalkChannel findOrCreateDingTalk() {
-        return (DingTalkChannel)
-                channels.computeIfAbsent(
-                        "dingtalk",
-                        id -> {
-                            String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
-                            if (webhookUrl == null) {
-                                webhookUrl = "https://oapi.dingtalk.com/robot/send";
-                            }
-                            DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
-                            ChannelGateway gw = new ChannelGateway(channel, session.agent());
-                            gw.start().block();
-                            gateways.put("dingtalk", gw);
-                            return channel;
-                        });
+    // Channel init blocks on gw.start(); keep it out of ConcurrentHashMap mapping functions
+    // (which hold a bin lock) by serializing on the monitor with a double check instead.
+    private synchronized DingTalkChannel findOrCreateDingTalk() {
+        DingTalkChannel existing = (DingTalkChannel) channels.get("dingtalk");
+        if (existing != null) return existing;
+        String webhookUrl = System.getenv("DINGTALK_WEBHOOK_URL");
+        if (webhookUrl == null) {
+            webhookUrl = "https://oapi.dingtalk.com/robot/send";
+        }
+        DingTalkChannel channel = new DingTalkChannel("dingtalk", webhookUrl);
+        ChannelGateway gw = new ChannelGateway(channel, session.agent());
+        gw.start().block();
+        gateways.put("dingtalk", gw);
+        channels.put("dingtalk", channel);
+        return channel;
     }
 
-    private FeishuChannel findOrCreateFeishu() {
-        return (FeishuChannel)
-                channels.computeIfAbsent(
-                        "feishu",
-                        id -> {
-                            String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
-                            if (webhookUrl == null) {
-                                webhookUrl =
-                                        "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
-                            }
-                            FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
-                            ChannelGateway gw = new ChannelGateway(channel, session.agent());
-                            gw.start().block();
-                            gateways.put("feishu", gw);
-                            return channel;
-                        });
+    private synchronized FeishuChannel findOrCreateFeishu() {
+        FeishuChannel existing = (FeishuChannel) channels.get("feishu");
+        if (existing != null) return existing;
+        String webhookUrl = System.getenv("FEISHU_WEBHOOK_URL");
+        if (webhookUrl == null) {
+            webhookUrl = "https://open.feishu.cn/open-apis/bot/v2/hook/unconfigured";
+        }
+        FeishuChannel channel = new FeishuChannel("feishu", webhookUrl);
+        ChannelGateway gw = new ChannelGateway(channel, session.agent());
+        gw.start().block();
+        gateways.put("feishu", gw);
+        channels.put("feishu", channel);
+        return channel;
     }
 }

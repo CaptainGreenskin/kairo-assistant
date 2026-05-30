@@ -19,6 +19,13 @@ public class ConversationStore {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationStore.class);
     private static final int PREVIEW_MAX_LENGTH = 60;
+    private static final java.util.regex.Pattern SESSION_ID =
+            java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
+    /** Guards against path traversal — session ids must be simple slugs, never paths. */
+    private static boolean isValidSessionId(String sessionId) {
+        return sessionId != null && SESSION_ID.matcher(sessionId).matches();
+    }
 
     private final Path baseDir;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -34,7 +41,7 @@ public class ConversationStore {
         }
     }
 
-    public String startSession() {
+    public synchronized String startSession() {
         currentSessionId = UUID.randomUUID().toString().substring(0, 8);
         currentFile = baseDir.resolve(currentSessionId + ".jsonl");
         appendEntry(Map.of(
@@ -44,7 +51,7 @@ public class ConversationStore {
         return currentSessionId;
     }
 
-    public void endSession() {
+    public synchronized void endSession() {
         if (currentFile == null) return;
         appendEntry(Map.of(
                 "type", "session_end",
@@ -52,7 +59,7 @@ public class ConversationStore {
                 "timestamp", Instant.now().toString()));
     }
 
-    public void appendMessage(String role, String content) {
+    public synchronized void appendMessage(String role, String content) {
         if (currentFile == null) startSession();
         appendEntry(Map.of(
                 "type", "message",
@@ -62,6 +69,7 @@ public class ConversationStore {
     }
 
     public List<Map<String, Object>> loadSession(String sessionId) {
+        if (!isValidSessionId(sessionId)) return List.of();
         Path file = baseDir.resolve(sessionId + ".jsonl");
         if (!Files.exists(file)) return List.of();
         List<Map<String, Object>> entries = new ArrayList<>();
@@ -119,7 +127,7 @@ public class ConversationStore {
         return sessions;
     }
 
-    public String currentSessionId() {
+    public synchronized String currentSessionId() {
         return currentSessionId;
     }
 
@@ -299,6 +307,7 @@ public class ConversationStore {
     }
 
     public boolean setTitle(String sessionId, String title) {
+        if (!isValidSessionId(sessionId)) return false;
         Path file = baseDir.resolve(sessionId + ".jsonl");
         if (!Files.exists(file)) return false;
         Path metaFile = baseDir.resolve(sessionId + ".meta.json");
@@ -319,6 +328,7 @@ public class ConversationStore {
     }
 
     public String getTitle(String sessionId) {
+        if (!isValidSessionId(sessionId)) return null;
         Path metaFile = baseDir.resolve(sessionId + ".meta.json");
         if (!Files.exists(metaFile)) return null;
         try {
@@ -332,6 +342,7 @@ public class ConversationStore {
     }
 
     public boolean deleteSession(String sessionId) {
+        if (!isValidSessionId(sessionId)) return false;
         Path file = baseDir.resolve(sessionId + ".jsonl");
         try {
             boolean deleted = Files.deleteIfExists(file);

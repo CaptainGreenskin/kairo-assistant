@@ -39,7 +39,7 @@ export function TracePage() {
     }
   }, [trace.data]);
 
-  const list = sessions.data?.conversations ?? [];
+  const list = sessions.data?.items ?? [];
 
   return (
     <div className="p-6 max-w-7xl mx-auto">

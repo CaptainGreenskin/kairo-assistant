@@ -24,14 +24,14 @@ class SkillControllerTest {
     void listSkillsReturnsAll() {
         Map<String, Object> result = controller.listSkills();
         assertThat((int) result.get("total")).isEqualTo(10);
-        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("skills");
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("items");
         assertThat(skills).hasSize(10);
     }
 
     @Test
     void listSkillsContainsDailyBriefing() {
         Map<String, Object> result = controller.listSkills();
-        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("skills");
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("items");
         assertThat(skills).anyMatch(s -> "daily-briefing".equals(s.get("name")));
     }
 
@@ -80,14 +80,14 @@ class SkillControllerTest {
         Map<String, Object> result = controller.listByCategory("general");
         assertThat(result.get("category")).isEqualTo("general");
         assertThat((int) result.get("total")).isGreaterThan(0);
-        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("skills");
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("items");
         assertThat(skills).allMatch(s -> "general".equals(s.get("category")));
     }
 
     @Test
     void listByCategoryCode() {
         Map<String, Object> result = controller.listByCategory("code");
-        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("skills");
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("items");
         assertThat(skills).anyMatch(s -> "code-review".equals(s.get("name")));
     }
 
@@ -107,7 +107,7 @@ class SkillControllerTest {
     @Test
     void skillSummaryHasExpectedFields() {
         Map<String, Object> result = controller.listSkills();
-        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("skills");
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) result.get("items");
         Map<String, Object> first = skills.get(0);
         assertThat(first).containsKey("name");
         assertThat(first).containsKey("version");

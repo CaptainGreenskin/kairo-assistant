@@ -17,7 +17,7 @@ export function DashboardPage() {
   const skills = skillsData?.skills ?? [];
 
   const totalTasks = cronData?.total ?? 0;
-  const tasks = cronData?.tasks ?? [];
+  const tasks = cronData?.items ?? [];
   const pausedTasks = tasks.filter((t) => t.paused).length;
   const failingTasks = tasks.filter((t) => (t.consecutiveFailures ?? 0) > 0).length;
 

@@ -53,6 +53,13 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         t.setDaemon(true);
         return t;
     });
+    // Per-message progress ticks run on their own pool so a slow/blocked socket
+    // can't stall keep-alive pings for every other connection.
+    private final ScheduledExecutorService progressScheduler = Executors.newScheduledThreadPool(2, r -> {
+        Thread t = new Thread(r, "ws-progress");
+        t.setDaemon(true);
+        return t;
+    });
 
     public AssistantWebSocketHandler(AssistantSession session, UnifiedGateway gateway,
                                      SessionAwareDeltaRouter sessionDeltaRouter,
@@ -71,6 +78,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
     @PreDestroy
     public void shutdown() {
         pingScheduler.shutdownNow();
+        progressScheduler.shutdownNow();
         log.info("WebSocket ping scheduler shut down");
     }
 
@@ -219,7 +227,7 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
             Msg input = Msg.of(MsgRole.USER, text);
             long callStart = System.currentTimeMillis();
 
-            ScheduledFuture<?> progressFuture = pingScheduler.scheduleAtFixedRate(() -> {
+            ScheduledFuture<?> progressFuture = progressScheduler.scheduleAtFixedRate(() -> {
                 if (wsSession.isOpen()) {
                     long elapsed = System.currentTimeMillis() - callStart;
                     sendJson(wsSession, Map.of("type", "progress", "elapsedMs", elapsed));
@@ -265,6 +273,8 @@ public class AssistantWebSocketHandler extends TextWebSocketHandler implements E
         lastPongTimes.remove(wsSession.getId());
 
         SessionKey key = SessionKey.of("websocket", wsSession.getId());
+        // Client disconnected — stop any in-flight agent run for this session.
+        gateway.interrupt(key);
         sessionDeltaRouter.unsubscribe(key, "ws-" + wsSession.getId());
 
         var clientSession = sessionManager.get(wsSession.getId());

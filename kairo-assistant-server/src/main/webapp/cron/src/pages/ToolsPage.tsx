@@ -9,10 +9,10 @@ export function ToolsPage() {
     queryFn: toolsApi.list,
   });
 
-  // Backend returns either { total, tools: [...] } or a raw list — handle both.
+  // Backend returns { total, items: [...] }; tolerate a raw list too.
   const rawTools: ToolEntry[] = Array.isArray(data)
     ? (data as ToolEntry[])
-    : (data?.tools ?? []);
+    : (data?.items ?? []);
 
   const f = filter.trim().toLowerCase();
   const filtered = f

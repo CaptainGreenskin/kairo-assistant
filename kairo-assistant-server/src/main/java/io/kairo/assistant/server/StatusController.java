@@ -171,14 +171,18 @@ public class StatusController {
     }
 
     @GetMapping("/tools")
-    public List<Map<String, String>> tools() {
-        return session.toolRegistry().getAll().stream()
+    public Map<String, Object> tools() {
+        List<Map<String, String>> items = session.toolRegistry().getAll().stream()
                 .map(tool -> Map.of(
                         "name", tool.name(),
                         "description", tool.description(),
                         "category", tool.category().name(),
                         "sideEffect", tool.sideEffect().name()))
                 .toList();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", items.size());
+        result.put("items", items);
+        return result;
     }
 
     @GetMapping("/tools/categories")
@@ -402,8 +406,12 @@ public class StatusController {
     }
 
     @GetMapping("/sessions")
-    public List<Map<String, String>> sessions() {
-        return conversationStore.listSessions();
+    public Map<String, Object> sessions() {
+        List<Map<String, String>> items = conversationStore.listSessions();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", items.size());
+        result.put("items", items);
+        return result;
     }
 
     @GetMapping("/sessions/search")
@@ -414,7 +422,7 @@ public class StatusController {
         return Map.of(
                 "query", q,
                 "total", results.size(),
-                "results", limited);
+                "items", limited);
     }
 
     @GetMapping("/sessions/{sessionId}")
@@ -670,8 +678,8 @@ public class StatusController {
     }
 
     @GetMapping("/plugins")
-    public List<Map<String, Object>> plugins() {
-        return session.pluginManager().list().stream()
+    public Map<String, Object> plugins() {
+        List<Map<String, Object>> items = session.pluginManager().list().stream()
                 .map(inst -> Map.<String, Object>of(
                         "id", inst.id(),
                         "name", inst.metadata().name(),
@@ -684,6 +692,10 @@ public class StatusController {
                         "scope", inst.scope().name(),
                         "enabled", inst.enabled()))
                 .toList();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", items.size());
+        result.put("items", items);
+        return result;
     }
 
     // Read-only listing of every registered subagent — including plugins that
@@ -693,7 +705,7 @@ public class StatusController {
     public Map<String, Object> subagents() {
         var registry = session.subagentRegistry();
         if (registry == null) {
-            return Map.of("total", 0, "subagents", List.of());
+            return Map.of("total", 0, "items", List.of());
         }
         var entries =
                 registry.list().stream()
@@ -713,7 +725,7 @@ public class StatusController {
                         .toList();
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("total", entries.size());
-        result.put("subagents", entries);
+        result.put("items", entries);
         return result;
     }
 

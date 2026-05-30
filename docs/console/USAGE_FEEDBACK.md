@@ -3,6 +3,28 @@
 Captured during the live SMOKE walkthrough on 2026-05-21. Findings are
 ranked by impact, with action notes for each.
 
+> **Status update (2026-05-30):** A follow-up code audit confirmed the
+> following are already resolved in the current tree and the sections
+> below are kept only for the audit trail:
+> - **F1** — `CronController` now runs `trigger` on a fire-and-forget
+>   `triggerPool` executor (no longer blocks the HTTP thread).
+> - **F2** — `CuratorAutoConfiguration` wiring fixed.
+> - **F4** — page `<title>` updated.
+> - **F7** — `ReplayController.preview()` now returns 404 for missing
+>   sessions, matching the `export` endpoint.
+> - **F8** — `GET /api/tools` exposes both `category` and `sideEffect`.
+>
+> **F12 (envelope unification) — done 2026-05-30:** every collection
+> endpoint now returns `{ total, items, ...meta }` (cron/memory/skills/
+> conversations + search/channels + recent/tools/sessions/plugins/
+> subagents). Frontend `console.ts`/`types.ts`/pages updated to read
+> `items`; verified via `tsc --noEmit` + `vite build`. NOT browser-tested
+> visually. The error-status standardization half of F12 (200+`{error}`
+> → 4xx) is still open — note the console's `request()` already throws on
+> any `{error}` body, so it's a backend/API-consumer cleanup only.
+>
+> Still open: F3, F5, F6, F9–F11, F13–F15, and F12 error-status codes.
+
 ---
 
 ## 🔴 P0 — actual broken behavior

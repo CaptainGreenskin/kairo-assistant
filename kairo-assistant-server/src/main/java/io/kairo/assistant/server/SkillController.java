@@ -29,7 +29,7 @@ public class SkillController {
         List<Map<String, Object>> skills = registry.list().stream()
                 .map(this::toSummary)
                 .toList();
-        return Map.of("total", skills.size(), "skills", skills);
+        return Map.of("total", skills.size(), "items", skills);
     }
 
     @GetMapping("/{name}")
@@ -64,7 +64,7 @@ public class SkillController {
         List<Map<String, Object>> skills = registry.listByCategory(cat).stream()
                 .map(this::toSummary)
                 .toList();
-        return Map.of("category", category.toLowerCase(), "total", skills.size(), "skills", skills);
+        return Map.of("category", category.toLowerCase(), "total", skills.size(), "items", skills);
     }
 
     private Map<String, Object> toSummary(SkillDefinition skill) {

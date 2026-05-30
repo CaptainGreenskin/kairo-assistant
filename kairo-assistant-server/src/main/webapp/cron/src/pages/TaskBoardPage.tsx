@@ -60,7 +60,7 @@ export function TaskBoardPage() {
       paused: [],
       failing: [],
     };
-    const tasks = data?.tasks ?? [];
+    const tasks = data?.items ?? [];
     for (const t of tasks) {
       if ((t.consecutiveFailures ?? 0) > 0) out.failing.push(t);
       else if (t.paused) out.paused.push(t);

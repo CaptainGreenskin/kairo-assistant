@@ -147,7 +147,7 @@ export function TaskCreatePage() {
             className="w-full bg-surface border border-border rounded px-3 py-2 text-sm"
           >
             <option value="">— none —</option>
-            {(tasksData?.tasks ?? []).map((t) => (
+            {(tasksData?.items ?? []).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.id} — {t.cron} — {t.prompt.slice(0, 40)}
               </option>

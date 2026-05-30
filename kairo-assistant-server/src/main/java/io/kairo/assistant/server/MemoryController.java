@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,7 +44,7 @@ public class MemoryController {
                     Map<String, Object> result = new LinkedHashMap<>();
                     result.put("scope", memScope.name());
                     result.put("total", entries.size());
-                    result.put("entries", entries);
+                    result.put("items", entries);
                     return result;
                 });
     }
@@ -60,7 +62,7 @@ public class MemoryController {
                     result.put("query", q);
                     result.put("scope", memScope.name());
                     result.put("total", entries.size());
-                    result.put("entries", entries);
+                    result.put("items", entries);
                     return result;
                 });
     }
@@ -111,10 +113,15 @@ public class MemoryController {
     }
 
     @DeleteMapping("/{id}")
-    public Mono<Map<String, Object>> delete(@PathVariable String id) {
-        return session.memoryStore().delete(id)
-                .doOnSuccess(v -> broadcaster.broadcast(Map.of("type", "memory_deleted", "id", id)))
-                .thenReturn(Map.<String, Object>of("status", "deleted", "id", id));
+    public Mono<ResponseEntity<Map<String, Object>>> delete(@PathVariable String id) {
+        return session.memoryStore().get(id)
+                .flatMap(existing -> session.memoryStore().delete(id)
+                        .doOnSuccess(v -> broadcaster.broadcast(
+                                Map.of("type", "memory_deleted", "id", id)))
+                        .thenReturn(ResponseEntity.ok(
+                                Map.<String, Object>of("status", "deleted", "id", id))))
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.<String, Object>of("error", "not found", "id", id)));
     }
 
     private MemoryScope parseScope(String scope) {

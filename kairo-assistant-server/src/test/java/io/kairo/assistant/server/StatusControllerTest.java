@@ -107,8 +107,10 @@ class StatusControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void toolsReturnsRegisteredTools() {
-        var tools = controller.tools();
+        var result = controller.tools();
+        var tools = (java.util.List<Map<String, Object>>) result.get("items");
         assertFalse(tools.isEmpty());
         var first = tools.get(0);
         assertNotNull(first.get("name"));
@@ -255,10 +257,11 @@ class StatusControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void pluginsReturnsEmptyByDefault() {
         var result = controller.plugins();
         assertNotNull(result);
-        assertTrue(result.isEmpty());
+        assertTrue(((java.util.List<Object>) result.get("items")).isEmpty());
     }
 
     @Test

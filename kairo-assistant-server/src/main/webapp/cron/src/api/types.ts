@@ -22,7 +22,7 @@ export interface CronTaskView {
 
 export interface CronTaskList {
   total: number;
-  tasks: CronTaskView[];
+  items: CronTaskView[];
 }
 
 export interface CreateCronTaskRequest {

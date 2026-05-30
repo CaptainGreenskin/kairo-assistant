@@ -44,7 +44,7 @@ export function MemoryPage() {
     onError: (e: Error) => toast.error(`Delete failed: ${e.message}`),
   });
 
-  const entries = data?.entries ?? [];
+  const entries = data?.items ?? [];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">

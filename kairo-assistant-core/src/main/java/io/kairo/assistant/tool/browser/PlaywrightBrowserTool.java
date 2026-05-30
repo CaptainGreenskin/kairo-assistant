@@ -202,6 +202,7 @@ public class PlaywrightBrowserTool implements SyncTool {
 
         try {
             Path tmpFile = Files.createTempFile("browser-screenshot-", ".png");
+            tmpFile.toFile().deleteOnExit();
             Files.write(tmpFile, bytes);
             String base64 = Base64.getEncoder().encodeToString(bytes);
             String sizeKb = String.format("%.1f", bytes.length / 1024.0);

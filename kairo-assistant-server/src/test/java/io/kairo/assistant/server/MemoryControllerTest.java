@@ -49,7 +49,17 @@ class MemoryControllerTest {
         String id = (String) saved.get("id");
 
         var deleted = controller.delete(id).block();
-        assertEquals("deleted", deleted.get("status"));
+        assertNotNull(deleted);
+        assertEquals(200, deleted.getStatusCode().value());
+        assertEquals("deleted", deleted.getBody().get("status"));
+    }
+
+    @Test
+    void deleteNonExistentReturns404() {
+        var deleted = controller.delete("nonexistent").block();
+        assertNotNull(deleted);
+        assertEquals(404, deleted.getStatusCode().value());
+        assertEquals("not found", deleted.getBody().get("error"));
     }
 
     @Test

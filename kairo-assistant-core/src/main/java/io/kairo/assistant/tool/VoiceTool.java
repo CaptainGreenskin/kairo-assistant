@@ -7,6 +7,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,6 +32,7 @@ public class VoiceTool implements SyncTool {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     public JsonSchema inputSchema() {
@@ -82,13 +84,8 @@ public class VoiceTool implements SyncTool {
         String outputFile = args.get("file") instanceof String f ? f : "/tmp/kairo-tts-output.mp3";
 
         try {
-            String requestBody = String.format(
-                    """
-                    {"model":"%s","input":"%s","voice":"%s"}
-                    """,
-                    model,
-                    text.replace("\"", "\\\"").replace("\n", " "),
-                    voice);
+            String requestBody = MAPPER.writeValueAsString(
+                    Map.of("model", model, "input", text, "voice", voice));
 
             HttpClient client = HTTP_CLIENT;
 

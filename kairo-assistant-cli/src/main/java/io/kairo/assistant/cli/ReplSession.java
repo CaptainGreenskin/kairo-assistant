@@ -40,6 +40,24 @@ public class ReplSession {
 
     private static final Logger log = LoggerFactory.getLogger(ReplSession.class);
 
+    // Single source of truth for slash commands. Drives tab-completion below and
+    // is kept in sync with the dispatch switch in handleSlashCommand by
+    // ReplSessionCommandsTest (which fails if the two ever diverge).
+    static final List<String> SLASH_COMMANDS = List.of(
+            "/help", "/status", "/tools", "/skills", "/config", "/model",
+            "/history", "/clear", "/verbose", "/permissions", "/channels",
+            "/plugins", "/plugin", "/version", "/interrupt", "/sessions", "/resume",
+            "/search", "/export", "/delete", "/render", "/system",
+            "/retry", "/cost", "/notify", "/alias", "/multiline",
+            "/context", "/undo", "/run", "/snippet", "/watch",
+            "/file", "/pipe", "/profile", "/env", "/timer",
+            "/bookmark", "/template", "/stats", "/diff",
+            "/schedule", "/chain", "/macro", "/format",
+            "/theme", "/log", "/feedback", "/pin", "/playground",
+            "/translate", "/summarize", "/whoami", "/doctor",
+            "/compact", "/recent", "/focus", "/agenda",
+            "/benchmark", "/top", "/replay", "/usage", "/quit", "/exit");
+
     private final AssistantSession session;
     private final ConversationStore conversationStore;
     private final List<Map<String, String>> history = new ArrayList<>();
@@ -87,20 +105,7 @@ public class ReplSession {
             terminal = TerminalBuilder.builder().system(true).build();
 
             Path historyFile = Path.of(session.config().dataDir(), ".repl_history");
-            Completer slashCompleter = new StringsCompleter(
-                    "/help", "/status", "/tools", "/skills", "/config", "/model",
-                    "/history", "/clear", "/verbose", "/permissions", "/channels",
-                    "/plugins", "/plugin", "/version", "/interrupt", "/sessions", "/resume",
-                    "/search", "/export", "/delete", "/render", "/system",
-                    "/retry", "/cost", "/notify", "/alias", "/multiline",
-                    "/context", "/undo", "/run", "/snippet", "/watch",
-                    "/file", "/pipe", "/profile", "/env", "/timer",
-                    "/bookmark", "/template", "/stats", "/diff",
-                    "/schedule", "/chain", "/macro", "/format",
-                    "/theme", "/log", "/feedback", "/pin", "/playground",
-                    "/translate", "/summarize", "/whoami", "/doctor",
-                    "/compact", "/recent", "/focus", "/agenda",
-                    "/benchmark", "/top", "/replay", "/usage", "/quit", "/exit");
+            Completer slashCompleter = new StringsCompleter(SLASH_COMMANDS);
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .completer(slashCompleter)
@@ -151,6 +156,14 @@ public class ReplSession {
             terminal.writer().flush();
         } catch (Exception e) {
             System.err.println("Failed to initialize terminal: " + e.getMessage());
+        } finally {
+            if (terminal != null) {
+                try {
+                    terminal.close();
+                } catch (Exception ignored) {
+                    // best-effort cleanup on shutdown
+                }
+            }
         }
     }
 
@@ -161,39 +174,32 @@ public class ReplSession {
         activeAgentThread.set(Thread.currentThread());
 
         try {
-            while (!future.isDone()) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException ie) {
-                    session.agent().interrupt();
-                    terminal.writer().println("\n[Interrupted]");
+            // Block on the result; a SIGINT interrupts this thread (see
+            // wireInterruptHandler) and surfaces here as InterruptedException.
+            Msg response = future.get();
+            if (response != null) {
+                long elapsed = System.currentTimeMillis() - startMs;
+                responseTimes.add(elapsed);
+                terminal.writer().println();
+                if (timerEnabled) {
+                    terminal.writer().printf("[%dms]%n", elapsed);
+                }
+                history.add(Map.of("role", "user", "content", line));
+                history.add(Map.of("role", "assistant", "content", response.text()));
+                conversationStore.appendMessage("user", line);
+                conversationStore.appendMessage("assistant", response.text());
+                totalInputChars += line.length();
+                totalOutputChars += response.text().length();
+                exchangeCount++;
+                if (notifyOnComplete.get()) {
+                    terminal.writer().print("\007");
                     terminal.writer().flush();
-                    break;
                 }
             }
-
-            if (future.isDone() && !future.isCompletedExceptionally()) {
-                Msg response = future.get();
-                if (response != null) {
-                    long elapsed = System.currentTimeMillis() - startMs;
-                    responseTimes.add(elapsed);
-                    terminal.writer().println();
-                    if (timerEnabled) {
-                        terminal.writer().printf("[%dms]%n", elapsed);
-                    }
-                    history.add(Map.of("role", "user", "content", line));
-                    history.add(Map.of("role", "assistant", "content", response.text()));
-                    conversationStore.appendMessage("user", line);
-                    conversationStore.appendMessage("assistant", response.text());
-                    totalInputChars += line.length();
-                    totalOutputChars += response.text().length();
-                    exchangeCount++;
-                    if (notifyOnComplete.get()) {
-                        terminal.writer().print("\007");
-                        terminal.writer().flush();
-                    }
-                }
-            }
+        } catch (InterruptedException ie) {
+            session.agent().interrupt();
+            terminal.writer().println("\n[Interrupted]");
+            terminal.writer().flush();
         } catch (ExecutionException e) {
             String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
             if (msg != null && msg.contains("interrupt")) {

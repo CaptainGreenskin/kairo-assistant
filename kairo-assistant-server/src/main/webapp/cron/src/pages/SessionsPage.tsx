@@ -23,8 +23,8 @@ export function SessionsPage() {
     enabled: selected !== null,
   });
 
-  const conversations = list.data?.conversations ?? [];
-  const searchHits = search.data?.sessions ?? [];
+  const conversations = list.data?.items ?? [];
+  const searchHits = search.data?.items ?? [];
   const showingSearch = query.trim().length > 0;
 
   return (

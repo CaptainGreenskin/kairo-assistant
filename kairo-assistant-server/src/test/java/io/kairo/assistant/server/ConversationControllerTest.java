@@ -61,7 +61,7 @@ class ConversationControllerTest {
         var result = controller.list(100, 0);
         int total = (int) result.get("total");
         assertTrue(total >= 1);
-        var conversations = (java.util.List<?>) result.get("conversations");
+        var conversations = (java.util.List<?>) result.get("items");
         assertNotNull(conversations);
         assertFalse(conversations.isEmpty());
     }
@@ -121,8 +121,8 @@ class ConversationControllerTest {
         store.appendMessage("user", "kubernetes deployment");
 
         var result = controller.search("kubernetes", 10, "grouped");
-        assertNotNull(result.get("sessionCount"));
-        var sessions = (java.util.List<Map<String, Object>>) result.get("sessions");
+        assertNotNull(result.get("total"));
+        var sessions = (java.util.List<Map<String, Object>>) result.get("items");
         assertFalse(sessions.isEmpty());
         assertNotNull(sessions.get(0).get("sessionId"));
     }

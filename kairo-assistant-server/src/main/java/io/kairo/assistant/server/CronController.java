@@ -62,7 +62,7 @@ public class CronController {
         var tasks = session.cronScheduler().list();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("total", tasks.size());
-        result.put("tasks", tasks.stream().map(this::toView).toList());
+        result.put("items", tasks.stream().map(this::toView).toList());
         return result;
     }
 

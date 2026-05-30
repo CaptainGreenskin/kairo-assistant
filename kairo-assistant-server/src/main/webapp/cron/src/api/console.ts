@@ -10,8 +10,12 @@ export interface PluginView {
   scope: string;
   enabled: boolean;
 }
+export interface PluginListResponse {
+  total: number;
+  items: PluginView[];
+}
 export const pluginsApi = {
-  list: () => api.get<PluginView[]>("/api/plugins"),
+  list: () => api.get<PluginListResponse>("/api/plugins"),
 };
 
 /** ----- Memory ----- */
@@ -29,7 +33,7 @@ export interface MemoryEntryView {
 export interface MemoryListResponse {
   scope: MemoryScope;
   total: number;
-  entries: MemoryEntryView[];
+  items: MemoryEntryView[];
 }
 export const memoryApi = {
   list: (scope: MemoryScope) =>
@@ -129,7 +133,7 @@ export interface SkillCatalogEntry {
 }
 export const skillsCatalogApi = {
   list: () =>
-    api.get<{ total: number; skills: SkillCatalogEntry[] }>("/api/skills"),
+    api.get<{ total: number; items: SkillCatalogEntry[] }>("/api/skills"),
 };
 
 /** ----- Channels ----- */
@@ -150,7 +154,7 @@ export interface ChannelRecentMessage {
 export interface ChannelRecentResponse {
   channelId: string;
   total: number;
-  messages: ChannelRecentMessage[];
+  items: ChannelRecentMessage[];
 }
 export const channelsApi = {
   list: () => api.get<unknown>("/api/channels"),
@@ -175,7 +179,7 @@ export interface ToolEntry {
 }
 export const toolsApi = {
   list: () =>
-    api.get<{ tools?: ToolEntry[]; total?: number; [k: string]: unknown }>(
+    api.get<{ items?: ToolEntry[]; total?: number; [k: string]: unknown }>(
       "/api/tools",
     ),
   categories: () => api.get<unknown>("/api/tools/categories"),
@@ -355,16 +359,14 @@ export const conversationsApi = {
       total: number;
       limit?: number;
       offset?: number;
-      conversations: ConversationSummary[];
+      items: ConversationSummary[];
     }>(`/api/conversations?limit=${limit}&offset=${offset}`),
   get: (sessionId: string) =>
     api.get<ConversationDetail>(`/api/conversations/${encodeURIComponent(sessionId)}`),
   search: (q: string) =>
     api.get<{
       query: string;
-      sessionCount?: number;
-      sessions?: Array<{ sessionId: string; title?: string; matchCount?: number }>;
       total?: number;
-      results?: unknown[];
+      items?: Array<{ sessionId: string; title?: string; matchCount?: number }>;
     }>(`/api/conversations/search?q=${encodeURIComponent(q)}`),
 };

@@ -9,7 +9,7 @@ export function SkillsPage() {
     queryFn: skillsCatalogApi.list,
   });
 
-  const skills = data?.skills ?? [];
+  const skills = data?.items ?? [];
   const f = filter.trim().toLowerCase();
   const filtered = f
     ? skills.filter((s) =>

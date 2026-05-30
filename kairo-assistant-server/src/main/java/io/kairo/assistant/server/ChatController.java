@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
@@ -119,7 +120,7 @@ public class ChatController {
                 sink.tryEmitNext("{\"type\":\"delta\",\"content\":\"" + JsonEscape.escape(delta) + "\"}"));
 
         Msg input = Msg.of(MsgRole.USER, request.message());
-        gateway.route(key, input)
+        Disposable routeSub = gateway.route(key, input)
                 .timeout(CHAT_STREAM_TIMEOUT)
                 .doOnSuccess(response -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
@@ -145,7 +146,13 @@ public class ChatController {
                 })
                 .subscribe();
 
-        return sink.asFlux();
+        // If the HTTP client disconnects, stop the agent run instead of letting
+        // it stream into a dead sink until the timeout fires.
+        return sink.asFlux().doOnCancel(() -> {
+            sessionDeltaRouter.unsubscribe(key, subId);
+            gateway.interrupt(key);
+            routeSub.dispose();
+        });
     }
 
     @PostMapping(value = "/chat/interrupt")

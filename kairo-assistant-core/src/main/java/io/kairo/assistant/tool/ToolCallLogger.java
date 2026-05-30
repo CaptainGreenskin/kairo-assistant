@@ -59,10 +59,23 @@ public class ToolCallLogger implements ToolExecutor {
 
     @Override
     public Flux<ToolResult> executeParallel(List<ToolInvocation> invocations) {
+        long start = System.currentTimeMillis();
+        // ToolResult carries no tool name; correlate by emission order, which the
+        // ReAct loop already relies on to map parallel results back to tool_use_ids.
         return delegate.executeParallel(invocations)
-                .doOnNext(result -> {
-                    totalCalls.incrementAndGet();
-                    if (result.isError()) totalErrors.incrementAndGet();
+                .index()
+                .map(tuple -> {
+                    int idx = tuple.getT1().intValue();
+                    ToolResult result = tuple.getT2();
+                    String toolName = idx < invocations.size()
+                            ? invocations.get(idx).toolName()
+                            : "parallel";
+                    if (result != null && result.isError()) {
+                        recordError(toolName, start, result.content());
+                    } else {
+                        record(toolName, start, result);
+                    }
+                    return result;
                 });
     }
 

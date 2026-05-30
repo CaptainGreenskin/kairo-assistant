@@ -57,7 +57,7 @@ class CronControllerTest {
         var result = controller.list();
         assertEquals(2, result.get("total"));
         @SuppressWarnings("unchecked")
-        var tasks = (List<Map<String, Object>>) result.get("tasks");
+        var tasks = (List<Map<String, Object>>) result.get("items");
         assertEquals(2, tasks.size());
     }
 

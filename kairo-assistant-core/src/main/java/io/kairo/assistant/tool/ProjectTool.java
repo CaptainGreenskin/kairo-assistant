@@ -80,7 +80,7 @@ public class ProjectTool implements SyncTool {
                 ctx.agentId(),
                 "PROJECT:" + name + "\nStatus: active\nCreated: " + Instant.now(),
                 Set.of("project", "kanban", name.toLowerCase()));
-        store.save(entry);
+        store.save(entry).block();
         return ToolResult.success("project", "Project created: " + name);
     }
 
@@ -98,7 +98,7 @@ public class ProjectTool implements SyncTool {
                 ctx.agentId(),
                 "TASK:" + project + ":" + task + "\nPriority: " + priority + "\nStatus: todo",
                 Set.of("task", "kanban", project.toLowerCase()));
-        store.save(entry);
+        store.save(entry).block();
         return ToolResult.success("project",
                 "Task added to " + project + ": " + task + " [" + priority + "]");
     }
@@ -125,8 +125,8 @@ public class ProjectTool implements SyncTool {
                 ctx.agentId(),
                 updatedContent,
                 original.tags());
-        store.delete(original.id());
-        store.save(updated);
+        store.delete(original.id()).block();
+        store.save(updated).block();
         return ToolResult.success("project",
                 "Task updated: " + task + " → " + status);
     }

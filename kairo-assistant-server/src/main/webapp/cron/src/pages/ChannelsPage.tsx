@@ -14,8 +14,8 @@ export function ChannelsPage() {
     ? (data as Array<Record<string, unknown>>)
     : data &&
         typeof data === "object" &&
-        Array.isArray((data as { channels?: unknown[] }).channels)
-      ? ((data as { channels: Array<Record<string, unknown>> }).channels)
+        Array.isArray((data as { items?: unknown[] }).items)
+      ? ((data as { items: Array<Record<string, unknown>> }).items)
       : [];
 
   return (
@@ -162,7 +162,7 @@ function RecentMessages({ channelId }: { channelId: string }) {
     queryFn: () => channelsApi.recent(channelId, 50),
     refetchInterval: 5_000,
   });
-  const messages = data?.messages ?? [];
+  const messages = data?.items ?? [];
 
   return (
     <div className="border border-border rounded bg-surface">

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
@@ -189,7 +190,7 @@ public class OpenAiCompatibleController {
         });
 
         Msg input = Msg.of(MsgRole.USER, content);
-        gateway.route(key, input)
+        Disposable routeSub = gateway.route(key, input)
                 .doOnSuccess(response -> {
                     sessionDeltaRouter.unsubscribe(key, subId);
                     Map<String, Object> finalChunk = Map.of(
@@ -213,7 +214,12 @@ public class OpenAiCompatibleController {
                 })
                 .subscribe();
 
-        return sink.asFlux();
+        // Stop the agent run if the API client disconnects mid-stream.
+        return sink.asFlux().doOnCancel(() -> {
+            sessionDeltaRouter.unsubscribe(key, subId);
+            gateway.interrupt(key);
+            routeSub.dispose();
+        });
     }
 
     private void emitChunk(Sinks.Many<String> sink, Map<String, Object> chunk) {

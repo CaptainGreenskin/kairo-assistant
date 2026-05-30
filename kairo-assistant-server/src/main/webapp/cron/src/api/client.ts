@@ -125,9 +125,9 @@ export const skillsApi = {
       if (
         raw &&
         typeof raw === "object" &&
-        Array.isArray((raw as { skills?: unknown[] }).skills)
+        Array.isArray((raw as { items?: unknown[] }).items)
       ) {
-        return (raw as { skills: unknown[] }).skills.map((s) =>
+        return (raw as { items: unknown[] }).items.map((s) =>
           coerceSkill(s),
         );
       }

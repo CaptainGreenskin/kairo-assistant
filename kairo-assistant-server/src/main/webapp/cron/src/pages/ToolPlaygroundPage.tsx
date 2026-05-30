@@ -18,7 +18,7 @@ export function ToolPlaygroundPage() {
 
   const rawTools: ToolEntry[] = Array.isArray(tools.data)
     ? (tools.data as ToolEntry[])
-    : (tools.data?.tools ?? []);
+    : (tools.data?.items ?? []);
   const f = filter.trim().toLowerCase();
   const filtered = f
     ? rawTools.filter((t) =>

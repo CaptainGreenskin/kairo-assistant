@@ -9,6 +9,7 @@ import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.api.workspace.Workspace;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -16,6 +17,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import reactor.core.publisher.Mono;
 
@@ -189,6 +192,7 @@ public class FileCheckpointTool implements SyncTool {
     }
 
     private String git(Path workDir, String... gitArgs) {
+        Process process = null;
         try {
             List<String> cmd = new ArrayList<>();
             cmd.add("git");
@@ -198,17 +202,36 @@ public class FileCheckpointTool implements SyncTool {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.directory(workDir.toFile());
             pb.redirectErrorStream(true);
-            Process process = pb.start();
+            process = pb.start();
 
-            String output;
-            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                output = reader.lines().collect(Collectors.joining("\n"));
+            // Drain stdout on a daemon thread so a chatty git can't deadlock on a full pipe.
+            final Process p = process;
+            CompletableFuture<String> stdout = new CompletableFuture<>();
+            Thread drain = new Thread(() -> {
+                try (var reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    stdout.complete(reader.lines().collect(Collectors.joining("\n")));
+                } catch (IOException ioe) {
+                    stdout.completeExceptionally(ioe);
+                }
+            }, "checkpoint-git-drain");
+            drain.setDaemon(true);
+            drain.start();
+
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                drain.interrupt();
+                return null;
             }
-
-            int exitCode = process.waitFor();
-            return exitCode == 0 ? output : null;
+            String output = stdout.get(2, TimeUnit.SECONDS);
+            return process.exitValue() == 0 ? output : null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         } catch (Exception e) {
             return null;
+        } finally {
+            if (process != null) process.destroyForcibly();
         }
     }
 }

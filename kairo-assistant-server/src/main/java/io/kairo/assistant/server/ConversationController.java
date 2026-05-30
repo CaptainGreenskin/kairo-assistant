@@ -47,7 +47,7 @@ public class ConversationController {
         result.put("total", total);
         result.put("limit", safeLimit);
         result.put("offset", safeOffset);
-        result.put("conversations", page);
+        result.put("items", page);
         return result;
     }
 
@@ -84,11 +84,11 @@ public class ConversationController {
         if ("flat".equals(mode)) {
             List<Map<String, Object>> results = store.search(q, clampedLimit);
             response.put("total", results.size());
-            response.put("results", results);
+            response.put("items", results);
         } else {
             List<Map<String, Object>> sessions = store.searchGrouped(q, clampedLimit);
-            response.put("sessionCount", sessions.size());
-            response.put("sessions", sessions);
+            response.put("total", sessions.size());
+            response.put("items", sessions);
         }
         return response;
     }

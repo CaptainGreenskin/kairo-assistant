@@ -6,6 +6,9 @@ import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,29 +16,53 @@ import org.slf4j.LoggerFactory;
 public class BrowserSessionManager {
 
     private static final Logger log = LoggerFactory.getLogger(BrowserSessionManager.class);
+    private static final long IDLE_TTL_MS = TimeUnit.MINUTES.toMillis(10);
+    private static final long SWEEP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(2);
 
     private final boolean headless;
     private final ConcurrentHashMap<String, BrowserSession> sessions = new ConcurrentHashMap<>();
     private final ReentrantLock initLock = new ReentrantLock();
+    private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "browser-session-sweeper");
+        t.setDaemon(true);
+        return t;
+    });
     private volatile Playwright playwright;
     private volatile Browser browser;
 
     public BrowserSessionManager(boolean headless) {
         this.headless = headless;
+        sweeper.scheduleAtFixedRate(
+                this::evictIdle, SWEEP_INTERVAL_MS, SWEEP_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
 
     public BrowserSession getOrCreate(String sessionId) {
-        return sessions.computeIfAbsent(sessionId, id -> {
+        BrowserSession session = sessions.computeIfAbsent(sessionId, id -> {
             ensureBrowserStarted();
             BrowserContext context = browser.newContext();
             Page page = context.newPage();
             log.info("Created browser session [{}]", id);
             return new BrowserSession(context, page);
         });
+        session.touch();
+        return session;
     }
 
     public BrowserSession get(String sessionId) {
-        return sessions.get(sessionId);
+        BrowserSession session = sessions.get(sessionId);
+        if (session != null) session.touch();
+        return session;
+    }
+
+    /** Closes sessions untouched for longer than {@link #IDLE_TTL_MS} to bound Chromium contexts. */
+    private void evictIdle() {
+        long cutoff = System.currentTimeMillis() - IDLE_TTL_MS;
+        for (var entry : sessions.entrySet()) {
+            if (entry.getValue().lastAccessedMillis() < cutoff) {
+                log.info("Evicting idle browser session [{}]", entry.getKey());
+                close(entry.getKey());
+            }
+        }
     }
 
     public void close(String sessionId) {
@@ -51,6 +78,7 @@ public class BrowserSessionManager {
     }
 
     public void shutdown() {
+        sweeper.shutdownNow();
         sessions.forEach((id, session) -> {
             try {
                 session.context().close();
@@ -93,6 +121,7 @@ public class BrowserSessionManager {
     public static class BrowserSession {
         private final BrowserContext context;
         private Page activePage;
+        private volatile long lastAccessedMillis = System.currentTimeMillis();
 
         BrowserSession(BrowserContext context, Page page) {
             this.context = context;
@@ -104,5 +133,9 @@ public class BrowserSessionManager {
         public Page activePage() { return activePage; }
 
         public void setActivePage(Page page) { this.activePage = page; }
+
+        void touch() { this.lastAccessedMillis = System.currentTimeMillis(); }
+
+        long lastAccessedMillis() { return lastAccessedMillis; }
     }
 }

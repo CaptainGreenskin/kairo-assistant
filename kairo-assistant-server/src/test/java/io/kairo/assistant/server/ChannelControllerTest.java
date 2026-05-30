@@ -102,7 +102,7 @@ class ChannelControllerTest {
         assertNotNull(result);
         assertTrue((Integer) result.get("total") >= 5);
         assertEquals(0, result.get("active"));
-        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("items");
         var ids = channels.stream().map(c -> c.get("id")).toList();
         assertTrue(ids.contains("dingtalk"));
         assertTrue(ids.contains("feishu"));
@@ -112,7 +112,7 @@ class ChannelControllerTest {
     @SuppressWarnings("unchecked")
     void listChannelsContainsTelegram() {
         var result = controller.list();
-        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("items");
         var ids = channels.stream().map(c -> c.get("id")).toList();
         assertTrue(ids.contains("telegram"));
     }
@@ -121,7 +121,7 @@ class ChannelControllerTest {
     @SuppressWarnings("unchecked")
     void listChannelsContainsSlack() {
         var result = controller.list();
-        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("items");
         var ids = channels.stream().map(c -> c.get("id")).toList();
         assertTrue(ids.contains("slack"));
     }
@@ -130,7 +130,7 @@ class ChannelControllerTest {
     @SuppressWarnings("unchecked")
     void listChannelsStatusIsAvailableWhenNotActive() {
         var result = controller.list();
-        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("channels");
+        var channels = (java.util.List<java.util.Map<String, Object>>) result.get("items");
         var status = channels.stream().map(c -> c.get("status")).distinct().toList();
         assertTrue(status.contains("available"));
     }

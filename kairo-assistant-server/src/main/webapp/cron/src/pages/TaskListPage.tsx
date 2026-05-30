@@ -20,7 +20,7 @@ export function TaskListPage() {
   const [selected, setSelected] = useState<CronTaskView | null>(null);
 
   const tasks = useMemo(() => {
-    const all = data?.tasks ?? [];
+    const all = data?.items ?? [];
     const q = search.trim().toLowerCase();
     return all
       .filter((t) => {
@@ -44,7 +44,7 @@ export function TaskListPage() {
             t.cron.toLowerCase().includes(q) ||
             t.prompt.toLowerCase().includes(q),
       );
-  }, [data?.tasks, filter, search]);
+  }, [data?.items, filter, search]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
